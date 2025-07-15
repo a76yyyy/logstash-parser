@@ -1,10 +1,10 @@
-# 🧩 Logstash Parser
+# Logstash Parser
 
 A Python-based Logstash pipeline configuration parser powered by [`pyparsing`](https://github.com/pyparsing/pyparsing). This tool parses Logstash config strings into an Abstract Syntax Tree (AST) with a consistent structure, making it easier to traverse, manipulate, and convert configurations between Logstash and Python representations.
 
 ---
 
-## ✨ Features
+## Features
 
 * Parses Logstash pipeline configuration strings into a clean, traversable AST.
 * Each AST node supports:

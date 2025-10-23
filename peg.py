@@ -146,6 +146,7 @@ class PEG:
 
     regexp = pp.QuotedString(quote_char="/", esc_char=None)
     regexp.set_name("regexp")
+    regexp.set_parse_action(build_regexp)
 
 
     r"""
@@ -166,6 +167,7 @@ class PEG:
 
     regexp_expression = rvalue + regexp_operator + pp.Or([string, regexp])
     regexp_expression.set_name("regexp_expression")
+    regexp_expression.set_parse_action(build_regexp_node)
 
     r"""
       rule in_operator
@@ -517,6 +519,7 @@ class PEG:
     config.set_name("config")
 
 # Assign the parse actions to the grammar rules
+# TODO: Need to set this parse action for method call
 # PEG.method_call.set_parse_action(build_method_call_node)
 PEG.config.set_parse_action(build_config_node)
 PEG.compare_expression.set_parse_action(lambda t: CompareExpression(t[0], t[1], t[2]))

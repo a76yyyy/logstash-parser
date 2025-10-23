@@ -1,24 +1,38 @@
 import ast
+from typing import Union
+import re 
 from pyparsing import ParseResults
 import json
-from typing import Union
 
 class ASTNode:
     _counter = 0
     def __init__(self):
         self.children: list[ASTNode] = []
         self.parent: Union[ASTNode | None] = None
+        self.in_expression_context = False
 
         self.uid = ASTNode._counter
         ASTNode._counter += 1
+
+    def set_expression_context(self, value: bool):
+        self.in_expression_context = value
+        for child in self.children:
+            if isinstance(child, ASTNode):
+                child.set_expression_context(value)
+
+    def traverse(self):
+        """Recursively traverse and call the `recurse` function on each child."""
+        for child in self.children:
+            child.traverse()
 
     def to_python(self):
         """Convert the AST node to a Python representation (to be defined later)."""
         raise NotImplementedError
 
     def to_logstash(self):
-        """Convert the AST node back to a Logstash representation (to be defined later)."""
+        """Convert the AST node to a Logstash representation (to be defined later)."""
         raise NotImplementedError
+
 
     def __repr__(self):
         return self.to_repr()
@@ -43,6 +57,8 @@ class LSString(ASTNode):
             raise ValueError(f"Invalid string literal {lexeme!r}: {e}")
 
     def to_python(self):
+        if self.in_expression_context:
+            return repr(self.value)
         return self.value
 
     def to_source(self):
@@ -86,6 +102,39 @@ class LSBareWord(ASTNode):
 
 def build_lsbw(tokens):
     return LSBareWord(tokens[0])
+
+class Regexp(ASTNode):
+    def __init__(self, lexeme: str):
+        super().__init__()
+
+        # NOTE: When rendering / printing, lexeme will have quotations around it.
+        self.lexeme = lexeme # in python, this is like: '"message"'
+
+        try:
+           self.value = r"{val}".format(val=lexeme)
+
+        except Exception as e:
+            raise ValueError(f"Invalid string literal {lexeme!r}: {e}")
+
+    def to_python(self):
+        if self.in_expression_context:
+            return repr(self.value)
+        return self.value
+
+    def to_source(self):
+        return self.lexeme
+
+    def to_logstash(self, indent=0):
+        return f"/{self.lexeme}/" 
+
+    def __repr__(self):
+        return f"LSString({self.lexeme!r})"
+    
+    def to_repr(self, indent: int = 0) -> str:
+        return " " * indent + f"Regexp({self.lexeme!r})"
+
+def build_regexp(toks):
+    return Regexp(toks[0])   
 
 class Number(ASTNode):
     def __init__(self, value):
@@ -298,7 +347,7 @@ class Plugin(ASTNode):
 
         D = {self.plugin_name : d } 
         return D
-
+    
     def to_logstash(self, indent=0, is_dm_branch=False):
         ind = indent * ' '
         out = f"{ind}{self.plugin_name} {{\n"
@@ -370,6 +419,31 @@ class SelectorNode(ASTNode):
 def build_selector_node(toks):
     return SelectorNode(toks[0])
 
+class RegexExpression(ASTNode):
+    def __init__(self, left, operator, pattern):
+        super().__init__()
+
+        self.left = left
+        self.operator = operator
+        self.pattern = pattern
+
+        self.children = [left, pattern]
+
+        self.set_expression_context(True)  # Mark sub-nodes as expression context
+
+        # set parent links
+        for child in self.children:
+            child.parent = self
+
+    def to_python(self):
+        return self.to_logstash()
+
+    def to_logstash(self, indent=0):
+        return f"{self.left.to_logstash()} {self.operator} {self.pattern.to_logstash()}"
+
+def build_regexp_node(toks):
+    return RegexExpression(toks[0], toks[1], toks[2])
+
 class CompareExpression(ASTNode):
     def __init__(self, left, operator, right):
         super().__init__()
@@ -377,6 +451,8 @@ class CompareExpression(ASTNode):
         self.operator = operator
         self.right = right
         self.children = [left, right]
+
+        self.set_expression_context(True)  # Mark sub-nodes as expression context
 
         # set parent links
         for child in self.children:
@@ -401,6 +477,8 @@ class InExpression(ASTNode):
         self.collection = collection
         self.children = [value, collection]
 
+        self.set_expression_context(True)  # Mark sub-nodes as expression context
+
         # set parent links
         for child in self.children:
             child.parent = self
@@ -422,6 +500,8 @@ class NotInExpression(ASTNode):
         self.collection = collection
         self.children = [value, collection]
 
+        self.set_expression_context(True)  # Mark sub-nodes as expression context
+
         # set parent links
         for child in self.children:
             child.parent = self
@@ -434,13 +514,14 @@ class NotInExpression(ASTNode):
 
     def to_python(self):
         return f"{self.value.to_python()} {self.operator} {self.collection.to_python()}"
-    
+
 class NegativeExpression(ASTNode):
     def __init__(self, operator, expression):
         super().__init__()
         self.operator = operator
         self.expression = expression
         self.children = [self.expression] if isinstance(self.expression, ASTNode) else []
+        self.set_expression_context(True)  # Mark sub-nodes as expression context
         
         # set parent links
         for child in self.children:
@@ -454,7 +535,7 @@ class NegativeExpression(ASTNode):
 
     def to_python(self):
         return f"not {self.expression.to_python()}".replace("not not ", '')
-    
+
     def to_logstash(self, indent=0):
         return f"!({self.expression.to_logstash()})"
 
@@ -476,7 +557,7 @@ class RValue(ASTNode):
     
     def to_python(self):
         return self.value.to_python()
-    
+
     def to_logstash(self):
         return self.value.to_logstash()
 
@@ -485,6 +566,8 @@ class Expression(ASTNode):
         super().__init__()
         self.condition = condition[0]
         self.children = [condition[0]] if isinstance(condition[0], ASTNode) else []
+
+        self.set_expression_context(True)  # Mark sub-nodes as expression context
 
         # set parent links
         for child in self.children:
@@ -509,6 +592,8 @@ class BooleanExpression(ASTNode):
         self.operator = operator
         self.right = right
         self.children = [left, right]
+
+        self.set_expression_context(True)  # Mark sub-nodes as expression context
 
         # set parent links
         for child in self.children:
@@ -579,7 +664,7 @@ class IfCondition(ASTNode):
             out += child.to_logstash(indent + 2, is_dm_branch=is_dm_branch)
         out += f"{ind}}}\n"
         return out
-    
+
 def build_if_condition_node(toks):
     return IfCondition(toks[0][1][0], toks[0][1][1][0])
 

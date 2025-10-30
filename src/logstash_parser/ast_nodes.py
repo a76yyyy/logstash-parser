@@ -21,7 +21,6 @@ class ASTNode(Generic[T]):
         loc: int | None = None,
     ) -> None:
         self.children: list[T] = []
-        self.parent: ASTNode | None = None
         self.in_expression_context = False
 
         # 延迟计算所需的信息
@@ -49,10 +48,6 @@ class ASTNode(Generic[T]):
             else:
                 raise ValueError(f"Failed to extract source text for {self._parser_name} at location {self._loc}")
             return self._source_text_cache
-
-        # 向上查找父节点
-        if self.parent is not None:
-            return self.parent.get_source_text()
 
         return None
 
@@ -226,10 +221,6 @@ class Array(ASTNode[ASTNode]):
         super().__init__(s=s, loc=loc)
         self.children: list[ASTNode] = values  # Generally the elements are either Hash or LSString
 
-        # set parent links
-        for child in self.children:
-            child.parent = self
-
     def to_python(self) -> list[Any]:
         # 数据结构节点:直接返回 Python list
         return [val.to_python() for val in self.children]
@@ -305,10 +296,6 @@ class Hash(ASTNode[HashEntryNode]):
         super().__init__(s=s, loc=loc)
         self.children: list[HashEntryNode] = [*entries]
 
-        # set parent links
-        for child in self.children:
-            child.parent = self
-
     def __repr__(self):
         return self.to_repr()
 
@@ -344,10 +331,6 @@ class Attribute(ASTNode):
         super().__init__(s=s, loc=loc)
         self.name: LSString | LSBareWord = name  # Either LSString or LSBareWord
         self.value: ASTNode = value
-
-        # set parent links
-        for child in self.children:
-            child.parent = self
 
     def __repr__(self):
         return f"Attribute {repr(self.name)} => {self.value}"
@@ -388,10 +371,6 @@ class Plugin(ASTNode[Attribute]):
             plugin_name if isinstance(plugin_name, str) else plugin_name.to_python()
         )  # This is LSBareWord when Logstash is first parsed
         self.children: list[Attribute] = attributes
-
-        # set parent links
-        for child in self.children:
-            child.parent = self
 
     def __repr__(self):
         return f"Plugin {self.plugin_name}: {self.children}"
@@ -453,10 +432,6 @@ class SelectorNode(ASTNode):
         self.raw: str | ASTNode = raw
         self.children: list[ASTNode] = [raw] if isinstance(raw, ASTNode) else []
 
-        # set parent links
-        for child in self.children:
-            child.parent = self
-
     def __repr__(self):
         return f"SelectorNode( {str(self.raw)})"
 
@@ -489,10 +464,6 @@ class RegexExpression(ASTNode):
 
         self.set_expression_context(True)  # Mark sub-nodes as expression context
 
-        # set parent links
-        for child in self.children:
-            child.parent = self
-
     def to_python(self) -> dict[str, Any]:
         # Expression 节点:返回结构化对象
         return {
@@ -518,10 +489,6 @@ class CompareExpression(ASTNode):
         self.children: list[ASTNode] = [left, right]
 
         self.set_expression_context(True)  # Mark sub-nodes as expression context
-
-        # set parent links
-        for child in self.children:
-            child.parent = self
 
     def __repr__(self):
         return f"{self.left} {self.operator} {self.right}"
@@ -552,10 +519,6 @@ class InExpression(ASTNode):
 
         self.set_expression_context(True)  # Mark sub-nodes as expression context
 
-        # set parent links
-        for child in self.children:
-            child.parent = self
-
     def __repr__(self):
         return f"InExpression({self.value} {self.operator} {self.collection})"
 
@@ -585,10 +548,6 @@ class NotInExpression(ASTNode):
 
         self.set_expression_context(True)  # Mark sub-nodes as expression context
 
-        # set parent links
-        for child in self.children:
-            child.parent = self
-
     def __repr__(self):
         return f"{self.value} {self.operator} {self.collection.to_python()} "
 
@@ -616,10 +575,6 @@ class NegativeExpression(ASTNode):
         self.children = [self.expression] if isinstance(self.expression, ASTNode) else []
         self.set_expression_context(True)  # Mark sub-nodes as expression context
 
-        # set parent links
-        for child in self.children:
-            child.parent = self
-
     def __repr__(self):
         return f"not {self.expression}".replace(
             "not not", ""
@@ -646,10 +601,6 @@ class RValue(ASTNode):
         self.value = value
         self.children = [value] if isinstance(value, ASTNode) else []
 
-        # set parent links
-        for child in self.children:
-            child.parent = self
-
     def __repr__(self):
         return f"{self.value}"
 
@@ -670,10 +621,6 @@ class Expression(ASTNode):
         self.children = [condition[0]] if isinstance(condition[0], ASTNode) else []
 
         self.set_expression_context(True)  # Mark sub-nodes as expression context
-
-        # set parent links
-        for child in self.children:
-            child.parent = self
 
     def to_logstash(self, indent=0):
         return self.condition.to_logstash()
@@ -700,10 +647,6 @@ class BooleanExpression(ASTNode[ASTNode]):
         self.children = [left, right]
 
         self.set_expression_context(True)  # Mark sub-nodes as expression context
-
-        # set parent links
-        for child in self.children:
-            child.parent = self
 
     def to_logstash(self, indent=0):
         if self.operator == "or":
@@ -737,10 +680,6 @@ class IfCondition(ASTNode["Plugin | Branch"]):
         super().__init__(s=s, loc=loc)
         self.expr = expr
         self.children = body.as_list() if isinstance(body, ParseResults) else body
-
-        # set parent links
-        for child in self.children:
-            child.parent = self
 
     def to_repr(self, indent: int = 0) -> str:
         ind = " " * indent
@@ -776,9 +715,6 @@ class ElseIfCondition(ASTNode["Plugin | Branch"]):
         self.expr = expr
         self.children = body.as_list()
         self.combined_expr = None
-        # set parent links
-        for child in self.children:
-            child.parent = self
 
     def to_repr(self, indent: int = 0) -> str:
         ind = " " * indent
@@ -815,10 +751,6 @@ class ElseCondition(ASTNode["Plugin | Branch"]):
         self.expr: Expression | BooleanExpression | None = None
         self.children = body.as_list()
         self.combined_expr = None
-
-        # set parent links
-        for child in self.children:
-            child.parent = self
 
     def to_repr(self, indent: int = 0) -> str:
         ind = " " * indent
@@ -879,10 +811,6 @@ class Branch(ASTNode[IfCondition | ElseIfCondition | ElseCondition]):
         children.extend(else_rules)
         self.children = children
 
-        # set parent links
-        for child in self.children:
-            child.parent = self
-
     def to_python(self) -> dict[str, Any]:
         # Branch 节点:返回结构化对象
         return {
@@ -910,10 +838,6 @@ class PluginSectionNode(ASTNode[Plugin]):
         super().__init__(s=s, loc=loc)
         self.plugin_type = plugin_type
         self.children = children
-
-        # set parent links
-        for child in self.children:
-            child.parent = self
 
     def to_repr(self, indent: int = 0) -> str:
         ind = " " * indent
@@ -950,10 +874,6 @@ class Config(ASTNode[PluginSectionNode]):
     ):
         super().__init__(s=s, loc=loc)
         self.children = toks
-
-        # set parent links
-        for child in self.children:
-            child.parent = self
 
     def to_repr(self, indent: int = 0) -> str:
         ind = " " * indent

@@ -127,3 +127,25 @@ class PEG:
 # Assign the parse actions to the grammar rules
 # TODO: Need to set this parse action for method call
 # PEG.method_call.set_parse_action(build_method_call_node)
+
+
+def parse_logstash_config(config_text: str):
+    """
+    Parse Logstash configuration text into AST.
+
+    Args:
+        config_text: Logstash configuration string
+
+    Returns:
+        Config AST node
+
+    Raises:
+        ParseError: If parsing fails
+    """
+    try:
+        result = config.parse_string(config_text)
+        if not result:
+            raise ParseError("Failed to parse configuration: empty result")
+        return result[0]
+    except Exception as e:
+        raise ParseError(f"Failed to parse Logstash configuration: {e}") from e

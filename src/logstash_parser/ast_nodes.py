@@ -1,9 +1,36 @@
 import ast
-from typing import Any, Generic, TypeVar
+from typing import Any, Generic, Literal, TypeVar, overload
 
 from pyparsing import ParserElement, ParseResults
 
 from logstash_parser import grammar
+from logstash_parser.schemas import (
+    ArraySchema,
+    ASTNodeSchema,
+    AttributeSchema,
+    BooleanExpressionSchema,
+    BooleanSchema,
+    BranchSchema,
+    CompareExpressionSchema,
+    ConfigSchema,
+    ElseConditionSchema,
+    ElseIfConditionSchema,
+    ExpressionSchema,
+    HashEntryNodeSchema,
+    HashSchema,
+    IfConditionSchema,
+    InExpressionSchema,
+    LSBareWordSchema,
+    LSStringSchema,
+    NegativeExpressionSchema,
+    NotInExpressionSchema,
+    NumberSchema,
+    PluginSchema,
+    PluginSectionNodeSchema,
+    RegexExpressionSchema,
+    RegexpSchema,
+    SelectorNodeSchema,
+)
 
 T = TypeVar("T", bound="ASTNode")
 
@@ -14,6 +41,9 @@ class ASTNode(Generic[T]):
     # 类变量：定义解析器名称和元素（子类可覆盖）
     _parser_name: str | None = None
     _parser_element: ParserElement | None = None
+
+    # Schema 类引用（子类必须覆盖，这里只是占位）
+    schema_class: type["ASTNodeSchema"]
 
     def __init__(
         self,
@@ -78,9 +108,54 @@ class ASTNode(Generic[T]):
             f"{self.__class__.__name__}.to_source() must be implemented or source text must be set"
         )
 
-    def to_python(self):
-        """Convert the AST node to a Python representation (to be defined later)."""
-        raise NotImplementedError
+    @overload
+    def to_python(self, as_pydantic: Literal[False] = False) -> Any: ...
+
+    @overload
+    def to_python(self, as_pydantic: Literal[True]) -> ASTNodeSchema: ...
+
+    def to_python(self, as_pydantic: bool = False) -> Any:
+        """Convert the AST node to a Python representation.
+
+        Args:
+            as_pydantic: If True, return Pydantic Schema object; if False, return dict/native types
+
+        Returns:
+            Pydantic Schema object if as_pydantic=True, otherwise dict or native Python types
+        """
+        if as_pydantic:
+            return self._to_pydantic_model()
+        return self._to_python_dict()
+
+    def _to_python_dict(self) -> Any:
+        """Convert to Python dict or native types (subclasses must implement)."""
+        raise NotImplementedError(f"{self.__class__.__name__}._to_python_dict() must be implemented")
+
+    def _to_pydantic_model(self) -> ASTNodeSchema:
+        """Convert to Pydantic Schema (subclasses must implement)."""
+        raise NotImplementedError(f"{self.__class__.__name__}._to_pydantic_model() must be implemented")
+
+    @classmethod
+    def from_python(cls, data: dict[str, Any] | ASTNodeSchema) -> "ASTNode":
+        """Create AST node from Python representation.
+
+        Args:
+            data: Either a dict or a Pydantic Schema object
+
+        Returns:
+            AST node instance
+        """
+        # If it's a dict, convert to Schema first
+        if isinstance(data, dict):
+            data = cls.schema_class.model_validate(data)
+
+        # Now data is a Schema object, use _from_pydantic
+        return cls._from_pydantic(data)  # type: ignore[arg-type]
+
+    @classmethod
+    def _from_pydantic(cls, schema: ASTNodeSchema) -> "ASTNode":
+        """Create AST node from Pydantic Schema (subclasses must implement)."""
+        raise NotImplementedError(f"{cls.__name__}._from_pydantic() must be implemented")
 
     def to_logstash(self):
         """Convert the AST node to a Logstash representation (to be defined later)."""
@@ -94,6 +169,8 @@ class ASTNode(Generic[T]):
 
 
 class LSString(ASTNode):
+    schema_class = LSStringSchema
+
     def __init__(self, lexeme: str):
         super().__init__()
 
@@ -111,11 +188,25 @@ class LSString(ASTNode):
         except Exception as e:
             raise ValueError(f"Invalid string literal {lexeme!r}: {e}") from None
 
-    def to_python(self):
+    def _to_python_dict(self):
         # 简单节点:直接返回 Python 原生类型
         if self.in_expression_context:
             return repr(self.value)
         return self.value
+
+    def _to_pydantic_model(self) -> LSStringSchema:
+        return LSStringSchema(
+            source_text=self.get_source_text(),
+            lexeme=self.lexeme,
+            value=self.value,
+        )
+
+    @classmethod
+    def _from_pydantic(cls, schema: ASTNodeSchema) -> "LSString":
+        assert isinstance(schema, LSStringSchema)
+        node = cls(schema.lexeme)
+        node._source_text_cache = schema.source_text
+        return node
 
     def to_source(self):
         return self.lexeme
@@ -136,6 +227,8 @@ class LSBareWord(ASTNode):
     Represents a logstash key word (e.g., mutate).
     """
 
+    schema_class = LSBareWordSchema
+
     def __init__(self, value: str):
         super().__init__()
         self.lexeme = value
@@ -147,9 +240,22 @@ class LSBareWord(ASTNode):
     def to_repr(self, indent: int = 0) -> str:
         return " " * indent + f"LSBareWord({self.value})"
 
-    def to_python(self):
+    def _to_python_dict(self):
         # 简单节点:直接返回字符串
         return self.value
+
+    def _to_pydantic_model(self) -> LSBareWordSchema:
+        return LSBareWordSchema(
+            source_text=self.get_source_text(),
+            value=self.value,
+        )
+
+    @classmethod
+    def _from_pydantic(cls, schema: ASTNodeSchema) -> "LSBareWord":
+        assert isinstance(schema, LSBareWordSchema)
+        node = cls(schema.value)
+        node._source_text_cache = schema.source_text
+        return node
 
     def to_logstash(self):
         return self.value
@@ -159,6 +265,8 @@ class LSBareWord(ASTNode):
 
 
 class Regexp(ASTNode):
+    schema_class = RegexpSchema
+
     def __init__(self, lexeme: str):
         super().__init__()
 
@@ -171,11 +279,25 @@ class Regexp(ASTNode):
         except Exception as e:
             raise ValueError(f"Invalid string literal {lexeme!r}: {e}") from None
 
-    def to_python(self):
+    def _to_python_dict(self):
         # 简单节点:直接返回正则表达式字符串
         if self.in_expression_context:
             return repr(self.value)
         return self.value
+
+    def _to_pydantic_model(self) -> RegexpSchema:
+        return RegexpSchema(
+            source_text=self.get_source_text(),
+            lexeme=self.lexeme,
+            value=self.value,
+        )
+
+    @classmethod
+    def _from_pydantic(cls, schema: ASTNodeSchema) -> "Regexp":
+        assert isinstance(schema, RegexpSchema)
+        node = cls(schema.lexeme)
+        node._source_text_cache = schema.source_text
+        return node
 
     def to_source(self):
         return self.lexeme
@@ -191,6 +313,8 @@ class Regexp(ASTNode):
 
 
 class Number(ASTNode):
+    schema_class = NumberSchema
+
     def __init__(self, value: int | float):
         super().__init__()
         self.lexeme: int | float = value
@@ -202,9 +326,22 @@ class Number(ASTNode):
     def to_repr(self, indent: int = 0) -> str:
         return " " * indent + f"Number({self.value})"
 
-    def to_python(self) -> int | float:
+    def _to_python_dict(self) -> int | float:
         # 简单节点:直接返回数字
         return self.value
+
+    def _to_pydantic_model(self) -> NumberSchema:
+        return NumberSchema(
+            source_text=self.get_source_text(),
+            value=self.value,
+        )
+
+    @classmethod
+    def _from_pydantic(cls, schema: ASTNodeSchema) -> "Number":
+        assert isinstance(schema, NumberSchema)
+        node = cls(schema.value)
+        node._source_text_cache = schema.source_text
+        return node
 
     def to_logstash(self, indent: int = 0) -> int | float:
         return self.value
@@ -214,6 +351,7 @@ class Number(ASTNode):
 
 
 class Array(ASTNode[ASTNode]):
+    schema_class = ArraySchema
     _parser_name = "array"
     _parser_element = grammar.array_with_source
 
@@ -221,34 +359,65 @@ class Array(ASTNode[ASTNode]):
         super().__init__(s=s, loc=loc)
         self.children: list[ASTNode] = values  # Generally the elements are either Hash or LSString
 
-    def to_python(self) -> list[Any]:
+    def _to_python_dict(self) -> list[Any]:
         # 数据结构节点:直接返回 Python list
-        return [val.to_python() for val in self.children]
+        return [val._to_python_dict() for val in self.children]
+
+    def _to_pydantic_model(self) -> ASTNodeSchema:
+        return ArraySchema(
+            source_text=self.get_source_text(),
+            children=[child._to_pydantic_model() for child in self.children],  # type: ignore[misc]
+        )
+
+    @classmethod
+    def _from_pydantic(cls, schema: ASTNodeSchema) -> "Array":
+        assert isinstance(schema, ArraySchema)
+        children = [_schema_to_node(child) for child in schema.children]
+        node = cls(children)
+        node._source_text_cache = schema.source_text
+        return node
 
     def __repr__(self):
-        return f"Array {[val.to_python() for val in self.children]}"
+        return f"Array {[val._to_python_dict() for val in self.children]}"
 
     def to_repr(self, indent: int = 0) -> str:
         ind = " " * indent
         children = "\n".join(c.to_repr(indent + 2) for c in self.children)
         return f"{ind}Array[\n{children}\n{ind}]"
 
-    def to_logstash(self, indent: int = 0) -> str:
-        ind = " " * indent
+    def to_source(self) -> str:
+        """Reconstruct array source from children."""
+        # Try to get cached source text first
+        source_text = self.get_source_text()
+        if source_text is not None:
+            return source_text
+
+        # Reconstruct from children
         inner_parts: list[str] = []
         for c in self.children:
-            if isinstance(c, Hash) or isinstance(c, HashEntryNode):
-                inner_parts.append(f"\n{ind}{c.to_logstash(indent=indent + 2)}\n")
+            source = c.to_source()
+            inner_parts.append(str(source) if not isinstance(source, str) else source)
+        return "[" + ", ".join(inner_parts) + "]"
+
+    def to_logstash(self, indent: int = 0) -> str:
+        ind = " " * indent
+        # Reconstruct from children for logstash output
+        inner_parts: list[str] = []
+        for c in self.children:
+            if isinstance(c, Hash):
+                # Hash needs special formatting - strip indent
+                inner_parts.append(c.to_logstash().strip())
             else:
-                source = c.to_source()
-                inner_parts.append(str(source) if not isinstance(source, str) else source)
-        _ = ", ".join(inner_parts)
-        return f"{ind}{self.to_source()}"  # NOTE: here, we aren't doing to_logstash() because of quotation marks issues
+                # For other types, use to_logstash
+                child_output = c.to_logstash()
+                inner_parts.append(str(child_output) if not isinstance(child_output, str) else child_output)
+        return f"{ind}[" + ", ".join(inner_parts) + "]"
 
 
 class HashEntryNode(ASTNode):
     """Corresponds to hash_entry in PEG"""
 
+    schema_class = HashEntryNodeSchema
     _parser_name = "hash_entry"
     _parser_element = grammar.hash_entry_with_source
 
@@ -268,19 +437,37 @@ class HashEntryNode(ASTNode):
 
     def to_logstash(self, indent: int = 0) -> str:
         ind = indent * " "
-        key_source = self.key.to_source()
-        out = f"{ind}{key_source if isinstance(key_source, str) else str(key_source)} => "
+        # Use to_logstash for key
+        key_output = self.key.to_logstash()
+        out = f"{ind}{key_output if isinstance(key_output, str) else str(key_output)} => "
         if isinstance(self.value, Hash):
             out += f"\n{self.value.to_logstash(indent + 2)}\n"
         else:
-            value_source = self.value.to_source()
-            out += value_source if isinstance(value_source, str) else str(value_source)
+            # Use to_logstash for value
+            value_output = self.value.to_logstash()
+            out += value_output if isinstance(value_output, str) else str(value_output)
             out += "\n"
         return out
 
-    def to_python(self) -> tuple[str | int | float, Any]:
+    def _to_python_dict(self) -> tuple[str | int | float, Any]:
         # HashEntry 返回键值对元组，由 Hash 节点组装成 dict
-        return (self.key.to_python(), self.value.to_python())
+        return (self.key._to_python_dict(), self.value._to_python_dict())
+
+    def _to_pydantic_model(self) -> ASTNodeSchema:
+        return HashEntryNodeSchema(
+            source_text=self.get_source_text(),
+            key=self.key._to_pydantic_model(),  # type: ignore[arg-type]
+            value=self.value._to_pydantic_model(),  # type: ignore[arg-type]
+        )
+
+    @classmethod
+    def _from_pydantic(cls, schema: ASTNodeSchema) -> "HashEntryNode":
+        assert isinstance(schema, HashEntryNodeSchema)
+        key = _schema_to_node(schema.key)
+        value = _schema_to_node(schema.value)
+        node = cls(key, value)
+        node._source_text_cache = schema.source_text
+        return node
 
 
 class Hash(ASTNode[HashEntryNode]):
@@ -289,6 +476,7 @@ class Hash(ASTNode[HashEntryNode]):
     Pretty much the same as hash_entries, except that hashmap wraps hash_entries in braces
     """
 
+    schema_class = HashSchema
     _parser_name = "hashmap"
     _parser_element = grammar.hashmap_with_source
 
@@ -304,15 +492,29 @@ class Hash(ASTNode[HashEntryNode]):
         children = "\n".join(c.to_repr(indent + 2) for c in self.children)
         return f"{ind}Hash {{\n{children}\n{ind}}}"
 
-    def to_python(self) -> dict[str | int | float, Any]:
+    def _to_python_dict(self) -> dict[str | int | float, Any]:
         # 数据结构节点:直接返回 Python dict
         hash_object: dict[str | int | float, Any] = {}
 
         for entry in self.children:
-            key, value = entry.to_python()
+            key, value = entry._to_python_dict()
             hash_object[key] = value
 
         return hash_object
+
+    def _to_pydantic_model(self) -> ASTNodeSchema:
+        return HashSchema(
+            source_text=self.get_source_text(),
+            children=[child._to_pydantic_model() for child in self.children],  # type: ignore[misc]
+        )
+
+    @classmethod
+    def _from_pydantic(cls, schema: ASTNodeSchema) -> "Hash":
+        assert isinstance(schema, HashSchema)
+        children = [HashEntryNode._from_pydantic(child) for child in schema.children]
+        node = cls(children)
+        node._source_text_cache = schema.source_text
+        return node
 
     def to_logstash(self, indent: int = 0) -> str:
         ind = " " * indent
@@ -324,6 +526,7 @@ class Hash(ASTNode[HashEntryNode]):
 
 
 class Attribute(ASTNode):
+    schema_class = AttributeSchema
     _parser_name = "attribute"
     _parser_element = grammar.attribute_with_source
 
@@ -339,11 +542,30 @@ class Attribute(ASTNode):
         ind = " " * indent
         return f"{ind}Attribute(\n{self.name.to_repr(indent + 2)} => {self.value.to_repr(indent + 2)}\n{ind})"
 
-    def to_python(self) -> dict[str, Any]:
-        # Attribute 节点:返回键值对 dict
-        name_key = self.name.to_python() if isinstance(self.name, ASTNode) else self.name
-        value_val = self.value.to_python() if isinstance(self.value, ASTNode) else self.value
+    def _to_python_dict(self) -> dict[str, Any]:
+        name_key = self.name._to_python_dict()
+        value_val = (
+            self.value._to_python_dict()
+            if hasattr(self.value, "_to_python_dict")
+            else (self.value._to_python_dict() if isinstance(self.value, ASTNode) else self.value)
+        )
         return {name_key: value_val}
+
+    def _to_pydantic_model(self) -> ASTNodeSchema:
+        return AttributeSchema(
+            source_text=self.get_source_text(),
+            name=self.name._to_pydantic_model(),  # type: ignore[arg-type]
+            value=self.value._to_pydantic_model(),  # type: ignore[arg-type]
+        )
+
+    @classmethod
+    def _from_pydantic(cls, schema: ASTNodeSchema) -> "Attribute":
+        assert isinstance(schema, AttributeSchema)
+        name = _schema_to_node(schema.name)
+        value = _schema_to_node(schema.value)
+        node = cls(name, value)
+        node._source_text_cache = schema.source_text
+        return node
 
     def to_logstash(self, indent: int = 0) -> str:
         ind = indent * " "
@@ -353,13 +575,14 @@ class Attribute(ASTNode):
         if isinstance(self.value, Hash):
             out += f"\n{self.value.to_logstash(indent + 2)}\n"
         else:
-            value_source = self.value.to_logstash()
-            out += value_source if isinstance(value_source, str) else str(value_source)
+            value_output = self.value.to_logstash()
+            out += value_output if isinstance(value_output, str) else str(value_output)
             out += "\n"
         return out
 
 
 class Plugin(ASTNode[Attribute]):
+    schema_class = PluginSchema
     _parser_name = "plugin"
     _parser_element = grammar.plugin_with_source
 
@@ -368,7 +591,7 @@ class Plugin(ASTNode[Attribute]):
     ):
         super().__init__(s=s, loc=loc)
         self.plugin_name: str = (
-            plugin_name if isinstance(plugin_name, str) else plugin_name.to_python()
+            plugin_name if isinstance(plugin_name, str) else plugin_name._to_python_dict()
         )  # This is LSBareWord when Logstash is first parsed
         self.children: list[Attribute] = attributes
 
@@ -381,13 +604,28 @@ class Plugin(ASTNode[Attribute]):
         children = "\n".join(c.to_repr(indent + 2) for c in self.children)
         return f"{header} {{\n{children}\n{ind}}}"
 
-    def to_python(self) -> dict[str, list[dict[str, Any]]]:
+    def _to_python_dict(self) -> dict[str, list[dict[str, Any]]]:
         d: list[dict[str, Any]] = []
         for attribute in self.children:
-            d.append(attribute.to_python())
+            d.append(attribute._to_python_dict())
 
         plugin_object: dict[str, list[dict[str, Any]]] = {self.plugin_name: d}
         return plugin_object
+
+    def _to_pydantic_model(self) -> ASTNodeSchema:
+        return PluginSchema(
+            source_text=self.get_source_text(),
+            plugin_name=self.plugin_name,
+            attributes=[child._to_pydantic_model() for child in self.children],  # type: ignore[misc]
+        )
+
+    @classmethod
+    def _from_pydantic(cls, schema: ASTNodeSchema) -> "Plugin":
+        assert isinstance(schema, PluginSchema)
+        attributes = [Attribute._from_pydantic(attr) for attr in schema.attributes]
+        node = cls(schema.plugin_name, attributes)
+        node._source_text_cache = schema.source_text
+        return node
 
     def to_logstash(self, indent: int = 0, is_dm_branch: bool = False) -> str:
         ind = indent * " "
@@ -400,13 +638,28 @@ class Plugin(ASTNode[Attribute]):
 
 
 class Boolean(ASTNode):
+    schema_class = BooleanSchema
+
     def __init__(self, value: bool):
         super().__init__()
         self.value: bool = value
 
-    def to_python(self) -> bool:
+    def _to_python_dict(self) -> bool:
         # 简单节点:直接返回布尔值
         return self.value
+
+    def _to_pydantic_model(self) -> BooleanSchema:
+        return BooleanSchema(
+            source_text=self.get_source_text(),
+            value=self.value,
+        )
+
+    @classmethod
+    def _from_pydantic(cls, schema: ASTNodeSchema) -> "Boolean":
+        assert isinstance(schema, BooleanSchema)
+        node = cls(schema.value)
+        node._source_text_cache = schema.source_text
+        return node
 
     def to_logstash(self, indent: int = 0) -> str:
         return str(self.value).lower()
@@ -415,7 +668,7 @@ class Boolean(ASTNode):
         return str(self.value).lower()
 
     def __repr__(self):
-        return str(self.to_python())
+        return str(self._to_python_dict())
 
     def to_repr(self, indent: int = 0) -> str:
         return " " * indent + f"Boolean({self.value})"
@@ -426,6 +679,8 @@ class SelectorNode(ASTNode):
     Represents a Log-Stash field reference like [foo][bar][baz]
     We keep the raw selector string around for fidelity.
     """
+
+    schema_class = SelectorNodeSchema
 
     def __init__(self, raw: str | ASTNode):
         super().__init__()
@@ -438,9 +693,22 @@ class SelectorNode(ASTNode):
     def to_repr(self, indent: int = 0) -> str:
         return " " * indent + f"SelectorNode({self.raw})"
 
-    def to_python(self) -> str:
+    def _to_python_dict(self) -> str:
         # 简单节点:直接返回选择器字符串
         return str(self.raw)
+
+    def _to_pydantic_model(self) -> ASTNodeSchema:
+        return SelectorNodeSchema(
+            source_text=self.get_source_text(),
+            raw=str(self.raw),
+        )
+
+    @classmethod
+    def _from_pydantic(cls, schema: ASTNodeSchema) -> "SelectorNode":
+        assert isinstance(schema, SelectorNodeSchema)
+        node = cls(schema.raw)
+        node._source_text_cache = schema.source_text
+        return node
 
     def to_logstash(self, indent: int = 0) -> str:
         return str(self.raw)
@@ -450,6 +718,7 @@ class SelectorNode(ASTNode):
 
 
 class RegexExpression(ASTNode):
+    schema_class = RegexExpressionSchema
     _parser_name = "regexp_expression"
     _parser_element = grammar.regexp_expression_with_source
 
@@ -464,20 +733,37 @@ class RegexExpression(ASTNode):
 
         self.set_expression_context(True)  # Mark sub-nodes as expression context
 
-    def to_python(self) -> dict[str, Any]:
+    def _to_python_dict(self) -> dict[str, Any]:
         # Expression 节点:返回结构化对象
         return {
-            "type": "regex_expression",
-            "left": self.left.to_python(),
+            "left": self.left._to_python_dict(),
             "operator": self.operator,
-            "pattern": self.pattern.to_python(),
+            "pattern": self.pattern._to_python_dict(),
         }
+
+    def _to_pydantic_model(self) -> ASTNodeSchema:
+        return RegexExpressionSchema(
+            source_text=self.get_source_text(),
+            left=self.left._to_pydantic_model(),  # type: ignore[arg-type]
+            operator=self.operator,
+            pattern=self.pattern._to_pydantic_model(),  # type: ignore[arg-type]
+        )
+
+    @classmethod
+    def _from_pydantic(cls, schema: ASTNodeSchema) -> "RegexExpression":
+        assert isinstance(schema, RegexExpressionSchema)
+        left = _schema_to_node(schema.left)
+        pattern = _schema_to_node(schema.pattern)
+        node = cls(left, schema.operator, pattern)
+        node._source_text_cache = schema.source_text
+        return node
 
     def to_logstash(self, indent: int = 0) -> str:
         return f"{self.left.to_logstash()} {self.operator} {self.pattern.to_logstash()}"
 
 
 class CompareExpression(ASTNode):
+    schema_class = CompareExpressionSchema
     _parser_name = "compare_expression"
     _parser_element = grammar.compare_expression_with_source
 
@@ -493,20 +779,37 @@ class CompareExpression(ASTNode):
     def __repr__(self):
         return f"{self.left} {self.operator} {self.right}"
 
-    def to_python(self) -> dict[str, Any]:
+    def _to_python_dict(self) -> dict[str, Any]:
         # Expression 节点:返回结构化对象
         return {
-            "type": "compare_expression",
-            "left": self.left.to_python(),
+            "left": self.left._to_python_dict(),
             "operator": self.operator,
-            "right": self.right.to_python(),
+            "right": self.right._to_python_dict(),
         }
+
+    def _to_pydantic_model(self) -> ASTNodeSchema:
+        return CompareExpressionSchema(
+            source_text=self.get_source_text(),
+            left=self.left._to_pydantic_model(),  # type: ignore[arg-type]
+            operator=self.operator,
+            right=self.right._to_pydantic_model(),  # type: ignore[arg-type]
+        )
+
+    @classmethod
+    def _from_pydantic(cls, schema: ASTNodeSchema) -> "CompareExpression":
+        assert isinstance(schema, CompareExpressionSchema)
+        left = _schema_to_node(schema.left)
+        right = _schema_to_node(schema.right)
+        node = cls(left, schema.operator, right)
+        node._source_text_cache = schema.source_text
+        return node
 
     def to_logstash(self, indent=0):
         return f"{self.left.to_logstash()} {self.operator} {self.right.to_logstash()}"
 
 
 class InExpression(ASTNode):
+    schema_class = InExpressionSchema
     _parser_name = "in_expression"
     _parser_element = grammar.in_expression_with_source
 
@@ -522,20 +825,38 @@ class InExpression(ASTNode):
     def __repr__(self):
         return f"InExpression({self.value} {self.operator} {self.collection})"
 
-    def to_python(self) -> dict[str, Any]:
+    def _to_python_dict(self) -> dict[str, Any]:
         # Expression 节点:返回结构化对象
         return {
             "type": "in_expression",
-            "value": self.value.to_python(),
+            "value": self.value._to_python_dict(),
             "operator": self.operator,
-            "collection": self.collection.to_python(),
+            "collection": self.collection._to_python_dict(),
         }
+
+    def _to_pydantic_model(self) -> ASTNodeSchema:
+        return InExpressionSchema(
+            source_text=self.get_source_text(),
+            value=self.value._to_pydantic_model(),  # type: ignore[arg-type]
+            operator=self.operator,
+            collection=self.collection._to_pydantic_model(),  # type: ignore[arg-type]
+        )
+
+    @classmethod
+    def _from_pydantic(cls, schema: ASTNodeSchema) -> "InExpression":
+        assert isinstance(schema, InExpressionSchema)
+        value = _schema_to_node(schema.value)
+        collection = _schema_to_node(schema.collection)
+        node = cls(value, schema.operator, collection)
+        node._source_text_cache = schema.source_text
+        return node
 
     def to_logstash(self, indent=0):
         return f"{self.value.to_logstash()} {self.operator} {self.collection.to_logstash()}"
 
 
 class NotInExpression(ASTNode):
+    schema_class = NotInExpressionSchema
     _parser_name = "not_in_expression"
     _parser_element = grammar.not_in_expression_with_source
 
@@ -549,22 +870,40 @@ class NotInExpression(ASTNode):
         self.set_expression_context(True)  # Mark sub-nodes as expression context
 
     def __repr__(self):
-        return f"{self.value} {self.operator} {self.collection.to_python()} "
+        return f"{self.value} {self.operator} {self.collection._to_python_dict()} "
 
     def to_logstash(self, indent=0):
         return f"{self.value.to_logstash()} {self.operator} {self.collection.to_logstash()})"
 
-    def to_python(self) -> dict[str, Any]:
+    def _to_python_dict(self) -> dict[str, Any]:
         # Expression 节点:返回结构化对象
         return {
             "type": "not_in_expression",
-            "value": self.value.to_python(),
+            "value": self.value._to_python_dict(),
             "operator": self.operator,
-            "collection": self.collection.to_python(),
+            "collection": self.collection._to_python_dict(),
         }
+
+    def _to_pydantic_model(self) -> ASTNodeSchema:
+        return NotInExpressionSchema(
+            source_text=self.get_source_text(),
+            value=self.value._to_pydantic_model(),  # type: ignore[arg-type]
+            operator=self.operator,
+            collection=self.collection._to_pydantic_model(),  # type: ignore[arg-type]
+        )
+
+    @classmethod
+    def _from_pydantic(cls, schema: ASTNodeSchema) -> "NotInExpression":
+        assert isinstance(schema, NotInExpressionSchema)
+        value = _schema_to_node(schema.value)
+        collection = _schema_to_node(schema.collection)
+        node = cls(value, schema.operator, collection)
+        node._source_text_cache = schema.source_text
+        return node
 
 
 class NegativeExpression(ASTNode):
+    schema_class = NegativeExpressionSchema
     _parser_name = "negative_expression"
     _parser_element = grammar.negative_expression_with_source
 
@@ -583,13 +922,28 @@ class NegativeExpression(ASTNode):
     def to_repr(self, indent=0):
         return f"not {self.expression}".replace("not not", "")
 
-    def to_python(self) -> dict[str, Any]:
+    def _to_python_dict(self) -> dict[str, Any]:
         # Expression 节点:返回结构化对象
         return {
             "type": "negative_expression",
             "operator": self.operator,
-            "expression": self.expression.to_python(),
+            "expression": self.expression._to_python_dict(),
         }
+
+    def _to_pydantic_model(self) -> ASTNodeSchema:
+        return NegativeExpressionSchema(
+            source_text=self.get_source_text(),
+            operator=self.operator,
+            expression=self.expression._to_pydantic_model(),  # type: ignore[arg-type]
+        )
+
+    @classmethod
+    def _from_pydantic(cls, schema: ASTNodeSchema) -> "NegativeExpression":
+        assert isinstance(schema, NegativeExpressionSchema)
+        expression = _schema_to_node(schema.expression)
+        node = cls(schema.operator, expression)
+        node._source_text_cache = schema.source_text
+        return node
 
     def to_logstash(self, indent=0):
         return f"!({self.expression.to_logstash()})"
@@ -604,14 +958,24 @@ class RValue(ASTNode):
     def __repr__(self):
         return f"{self.value}"
 
-    def to_python(self):
-        return self.value.to_python()
+    def _to_python_dict(self):
+        return self.value._to_python_dict()
+
+    def _to_pydantic_model(self) -> ASTNodeSchema:
+        return self.value._to_pydantic_model()
+
+    @classmethod
+    def _from_pydantic(cls, schema: ASTNodeSchema) -> "RValue":
+        # RValue 直接包装内部 value，从 schema 重建
+        value = _schema_to_node(schema)
+        return cls(value)  # type: ignore[arg-type]
 
     def to_logstash(self):
         return self.value.to_logstash()
 
 
 class Expression(ASTNode):
+    schema_class = ExpressionSchema
     _parser_name = "expression"
     _parser_element = grammar.expression_with_source
 
@@ -625,9 +989,21 @@ class Expression(ASTNode):
     def to_logstash(self, indent=0):
         return self.condition.to_logstash()
 
-    def to_python(self):
-        # Expression 是包装器，直接返回内部 condition 的结果
-        return self.condition.to_python()
+    def _to_python_dict(self):
+        return self.condition._to_python_dict()
+
+    def _to_pydantic_model(self) -> ASTNodeSchema:
+        # Expression 是包装器，直接返回内部 condition 的 schema
+        return self.condition._to_pydantic_model()
+
+    @classmethod
+    def _from_pydantic(cls, schema: ASTNodeSchema) -> "Expression":
+        # Expression 是包装器，从 schema 重建内部 condition
+        # schema 本身就是 condition 的 schema
+        condition = _schema_to_node(schema)
+        node = cls([condition])
+        node._source_text_cache = schema.source_text
+        return node
 
     def __repr__(self):
         return f"{self.condition}".replace(
@@ -636,6 +1012,7 @@ class Expression(ASTNode):
 
 
 class BooleanExpression(ASTNode[ASTNode]):
+    schema_class = BooleanExpressionSchema
     # BooleanExpression 不需要 parser_element，因为它可以从子节点重构
 
     def __init__(self, left, operator, right):
@@ -656,14 +1033,31 @@ class BooleanExpression(ASTNode[ASTNode]):
     def __repr__(self):
         return f"({self.left} {self.operator} {self.right})"
 
-    def to_python(self) -> dict[str, Any]:
+    def _to_python_dict(self) -> dict[str, Any]:
         # Expression 节点:返回结构化对象
         return {
             "type": "boolean_expression",
-            "left": self.left.to_python(),
+            "left": self.left._to_python_dict(),
             "operator": self.operator,
-            "right": self.right.to_python(),
+            "right": self.right._to_python_dict(),
         }
+
+    def _to_pydantic_model(self) -> ASTNodeSchema:
+        return BooleanExpressionSchema(
+            source_text=self.get_source_text(),
+            left=self.left._to_pydantic_model(),  # type: ignore[arg-type]
+            operator=self.operator,
+            right=self.right._to_pydantic_model(),  # type: ignore[arg-type]
+        )
+
+    @classmethod
+    def _from_pydantic(cls, schema: ASTNodeSchema) -> "BooleanExpression":
+        assert isinstance(schema, BooleanExpressionSchema)
+        left = _schema_to_node(schema.left)
+        right = _schema_to_node(schema.right)
+        node = cls(left, schema.operator, right)
+        node._source_text_cache = schema.source_text
+        return node
 
     def to_source(self):
         # 从子节点重构 source text
@@ -673,8 +1067,9 @@ class BooleanExpression(ASTNode[ASTNode]):
 
 
 class IfCondition(ASTNode["Plugin | Branch"]):
+    schema_class = IfConditionSchema
     _parser_name = "if_condition"
-    _parser_element = grammar.if_rule_with_source
+    _parser_element = grammar.if_condition_with_source
 
     def __init__(self, expr: Expression | BooleanExpression, body, s: str | None = None, loc: int | None = None):
         super().__init__(s=s, loc=loc)
@@ -683,17 +1078,33 @@ class IfCondition(ASTNode["Plugin | Branch"]):
 
     def to_repr(self, indent: int = 0) -> str:
         ind = " " * indent
-        header = f"{ind}IfCondition(expr={self.expr.to_python()})"
+        header = f"{ind}IfCondition(expr={self.expr._to_python_dict()})"
         children = "\n".join(c.to_repr(indent + 2) for c in self.children)
         return f"{header} {{\n{children}\n{ind}}}"
 
-    def to_python(self) -> dict[str, Any]:
+    def _to_python_dict(self) -> dict[str, Any]:
         # Branch condition 节点:返回结构化对象
         return {
             "type": "if",
-            "expr": self.expr.to_python(),
-            "body": [child.to_python() for child in self.children],
+            "expr": self.expr._to_python_dict(),
+            "body": [child._to_python_dict() for child in self.children],
         }
+
+    def _to_pydantic_model(self) -> ASTNodeSchema:
+        return IfConditionSchema(
+            source_text=self.get_source_text(),
+            expr=self.expr._to_pydantic_model(),  # type: ignore[arg-type]
+            body=[child._to_pydantic_model() for child in self.children],  # type: ignore[misc]
+        )
+
+    @classmethod
+    def _from_pydantic(cls, schema: ASTNodeSchema) -> "IfCondition":
+        assert isinstance(schema, IfConditionSchema)
+        expr = _schema_to_node(schema.expr)
+        body = [_schema_to_node(child) for child in schema.body]
+        node = cls(expr, body)  # type: ignore[arg-type]
+        node._source_text_cache = schema.source_text
+        return node
 
     def to_logstash(self, indent=0, is_dm_branch=False):
         if not is_dm_branch:
@@ -707,35 +1118,52 @@ class IfCondition(ASTNode["Plugin | Branch"]):
 
 
 class ElseIfCondition(ASTNode["Plugin | Branch"]):
+    schema_class = ElseIfConditionSchema
     _parser_name = "else_if_condition"
-    _parser_element = grammar.else_if_rule_with_source
+    _parser_element = grammar.else_if_condition_with_source
 
     def __init__(self, expr: Expression | BooleanExpression, body, s: str | None = None, loc: int | None = None):
         super().__init__(s=s, loc=loc)
         self.expr = expr
-        self.children = body.as_list()
+        self.children = body.as_list() if isinstance(body, ParseResults) else body
         self.combined_expr = None
 
     def to_repr(self, indent: int = 0) -> str:
         ind = " " * indent
-        header = f"{ind}ElseIfCondition(expr={self.expr.to_python()})"
+        header = f"{ind}ElseIfCondition(expr={self.expr._to_python_dict()})"
         children = "\n".join(c.to_repr(indent + 2) for c in self.children)
         return f"{header} {{\n{children}\n{ind}}}"
 
-    def to_python(self) -> dict[str, Any]:
+    def _to_python_dict(self) -> dict[str, Any]:
         # Branch condition 节点:返回结构化对象
         return {
             "type": "else_if",
-            "expr": self.expr.to_python(),
-            "body": [child.to_python() for child in self.children],
+            "expr": self.expr._to_python_dict(),
+            "body": [child._to_python_dict() for child in self.children],
         }
+
+    def _to_pydantic_model(self) -> ASTNodeSchema:
+        return ElseIfConditionSchema(
+            source_text=self.get_source_text(),
+            expr=self.expr._to_pydantic_model(),  # type: ignore[arg-type]
+            body=[child._to_pydantic_model() for child in self.children],  # type: ignore[misc]
+        )
+
+    @classmethod
+    def _from_pydantic(cls, schema: ASTNodeSchema) -> "ElseIfCondition":
+        assert isinstance(schema, ElseIfConditionSchema)
+        expr = _schema_to_node(schema.expr)
+        body = [_schema_to_node(child) for child in schema.body]
+        node = cls(expr, body)  # type: ignore[arg-type]
+        node._source_text_cache = schema.source_text
+        return node
 
     def to_logstash(self, indent=0, is_dm_branch=False):
         if not is_dm_branch:
-            return f"else if ({self.expr.to_python()} )"
+            return f"else if ({self.expr.to_logstash()} )"
 
         ind = indent * " "
-        out = f"{ind} else if {self.expr.to_python()} {{\n"
+        out = f"{ind} else if {self.expr.to_logstash()} {{\n"
         for child in self.children:
             out += child.to_logstash(indent + 2, is_dm_branch=is_dm_branch)
         out += f"{ind}}}\n"
@@ -743,29 +1171,44 @@ class ElseIfCondition(ASTNode["Plugin | Branch"]):
 
 
 class ElseCondition(ASTNode["Plugin | Branch"]):
+    schema_class = ElseConditionSchema
     _parser_name = "else_condition"
-    _parser_element = grammar.else_rule_with_source
+    _parser_element = grammar.else_condition_with_source
 
     def __init__(self, body, s: str | None = None, loc: int | None = None):
         super().__init__(s=s, loc=loc)
         self.expr: Expression | BooleanExpression | None = None
-        self.children = body.as_list()
+        self.children = body.as_list() if isinstance(body, ParseResults) else body
         self.combined_expr = None
 
     def to_repr(self, indent: int = 0) -> str:
         ind = " " * indent
         header = f"{ind}ElseCondition"
-        header += f"(expr={self.expr.to_python()})" if self.expr else ""
+        header += f"(expr={self.expr._to_python_dict()})" if self.expr else ""
         children = "\n".join(c.to_repr(indent + 2) for c in self.children)
         return f"{header} {{\n{children}\n{ind}}}"
 
-    def to_python(self) -> dict[str, Any]:
+    def _to_python_dict(self) -> dict[str, Any]:
         # Branch condition 节点:返回结构化对象
         # else 没有 expr
         return {
             "type": "else",
-            "body": [child.to_python() for child in self.children],
+            "body": [child._to_python_dict() for child in self.children],
         }
+
+    def _to_pydantic_model(self) -> ASTNodeSchema:
+        return ElseConditionSchema(
+            source_text=self.get_source_text(),
+            body=[child._to_pydantic_model() for child in self.children],  # type: ignore[misc]
+        )
+
+    @classmethod
+    def _from_pydantic(cls, schema: ASTNodeSchema) -> "ElseCondition":
+        assert isinstance(schema, ElseConditionSchema)
+        body = [_schema_to_node(child) for child in schema.body]
+        node = cls(body)  # type: ignore[arg-type]
+        node._source_text_cache = schema.source_text
+        return node
 
     def to_logstash(self, indent=0, is_dm_branch=False):
         if not is_dm_branch:
@@ -787,6 +1230,7 @@ class ElseCondition(ASTNode["Plugin | Branch"]):
 
 
 class Branch(ASTNode[IfCondition | ElseIfCondition | ElseCondition]):
+    schema_class = BranchSchema
     _parser_name = "branch"
     _parser_element = grammar.branch_with_source
 
@@ -811,12 +1255,41 @@ class Branch(ASTNode[IfCondition | ElseIfCondition | ElseCondition]):
         children.extend(else_rules)
         self.children = children
 
-    def to_python(self) -> dict[str, Any]:
+    def _to_python_dict(self) -> dict[str, Any]:
         # Branch 节点:返回结构化对象
         return {
             "type": "branch",
-            "conditions": [child.to_python() for child in self.children],
+            "conditions": [child._to_python_dict() for child in self.children],
         }
+
+    def _to_pydantic_model(self) -> ASTNodeSchema:
+        return BranchSchema(
+            source_text=self.get_source_text(),
+            children=[child._to_pydantic_model() for child in self.children],  # type: ignore[misc]
+        )
+
+    @classmethod
+    def _from_pydantic(cls, schema: ASTNodeSchema) -> "Branch":
+        assert isinstance(schema, BranchSchema)
+        # 从 schema.children 重建 if/elseif/else 条件
+        if_rule = None
+        else_if_rules = []
+        else_rule = None
+
+        for child in schema.children:
+            if isinstance(child, IfConditionSchema):
+                if_rule = IfCondition._from_pydantic(child)
+            elif isinstance(child, ElseIfConditionSchema):
+                else_if_rules.append(ElseIfCondition._from_pydantic(child))
+            elif isinstance(child, ElseConditionSchema):
+                else_rule = ElseCondition._from_pydantic(child)
+
+        if if_rule is None:
+            raise ValueError("Branch must have an if condition")
+
+        node = cls(if_rule, else_if_rules if else_if_rules else None, else_rule)
+        node._source_text_cache = schema.source_text
+        return node
 
     def to_logstash(self, indent=0, is_dm_branch=False) -> str:
         out = ""
@@ -831,6 +1304,7 @@ class Branch(ASTNode[IfCondition | ElseIfCondition | ElseCondition]):
 
 
 class PluginSectionNode(ASTNode[Plugin]):
+    schema_class = PluginSectionNodeSchema
     _parser_name = "plugin_section"
     _parser_element = grammar.plugin_section_with_source
 
@@ -845,12 +1319,28 @@ class PluginSectionNode(ASTNode[Plugin]):
         children = "\n".join(c.to_repr(indent + 2) for c in self.children)
         return f"{header} {{\n{children}\n{ind}}}"
 
-    def to_python(self):
+    def _to_python_dict(self):
         # Return a dictionary with plugin_type as key and list of children as value
         children_data = []
         for child in self.children:
-            children_data.append(child.to_python())
+            children_data.append(child._to_python_dict())
         return {self.plugin_type: children_data}
+
+    def _to_pydantic_model(self) -> ASTNodeSchema:
+        return PluginSectionNodeSchema(
+            source_text=self.get_source_text(),
+            plugin_type=self.plugin_type,
+            children=[child._to_pydantic_model() for child in self.children],  # type: ignore[misc]
+        )
+
+    @classmethod
+    def _from_pydantic(cls, schema: ASTNodeSchema) -> "PluginSectionNode":
+        assert isinstance(schema, PluginSectionNodeSchema)
+        # 从 schema.children 重建 Plugin 或 Branch
+        children = [_schema_to_node(child) for child in schema.children]
+        node = cls(schema.plugin_type, children)
+        node._source_text_cache = schema.source_text
+        return node
 
     def to_logstash(self, indent=0, is_dm_branch=False) -> str:
         ind = " " * indent
@@ -863,6 +1353,7 @@ class PluginSectionNode(ASTNode[Plugin]):
 
 
 class Config(ASTNode[PluginSectionNode]):
+    schema_class = ConfigSchema
     _parser_name = "config"
     _parser_element = grammar.config_with_source
 
@@ -880,7 +1371,7 @@ class Config(ASTNode[PluginSectionNode]):
         children = "\n".join(child.to_repr(indent + 2) for child in self.children)
         return f"{ind}Config {{\n{children}\n{ind}}}"
 
-    def to_python(self):
+    def _to_python_dict(self):
         """Convert the Config AST to a Python dictionary representation.
 
         Returns a dictionary where keys are plugin types (input/filter/output)
@@ -890,7 +1381,7 @@ class Config(ASTNode[PluginSectionNode]):
 
         for child in self.children:
             if isinstance(child, PluginSectionNode):
-                child_data = child.to_python()
+                child_data = child._to_python_dict()
                 # child_data is like {"filter": [...]}
                 for plugin_type, content in child_data.items():
                     if plugin_type not in config_dict:
@@ -898,6 +1389,21 @@ class Config(ASTNode[PluginSectionNode]):
                     config_dict[plugin_type].extend(content)
 
         return config_dict
+
+    def _to_pydantic_model(self) -> ASTNodeSchema:
+        return ConfigSchema(
+            source_text=self.get_source_text(),
+            children=[child._to_pydantic_model() for child in self.children],  # type: ignore[misc]
+        )
+
+    @classmethod
+    def _from_pydantic(cls, schema: ASTNodeSchema) -> "Config":
+        assert isinstance(schema, ConfigSchema)
+        # 从 schema.children 重建 PluginSectionNode
+        children = [PluginSectionNode._from_pydantic(child) for child in schema.children]
+        node = cls(children)
+        node._source_text_cache = schema.source_text
+        return node
 
     def to_logstash(self, indent=0, is_dm_branch=False) -> str:
         """Convert the Config AST back to Logstash configuration format."""
@@ -907,6 +1413,76 @@ class Config(ASTNode[PluginSectionNode]):
                 out += child.to_logstash(indent, is_dm_branch)
                 out += "\n"
         return out.rstrip() + "\n"
+
+
+# ============================================================================
+# Schema to Node mapping
+# ============================================================================
+
+# Mapping from Schema class to AST Node class for efficient conversion
+SCHEMA_TO_NODE: dict[type[ASTNodeSchema], type[ASTNode]] = {
+    # Simple types
+    LSStringSchema: LSString,
+    LSBareWordSchema: LSBareWord,
+    NumberSchema: Number,
+    BooleanSchema: Boolean,
+    RegexpSchema: Regexp,
+    SelectorNodeSchema: SelectorNode,
+    # Data structures
+    ArraySchema: Array,
+    HashEntryNodeSchema: HashEntryNode,
+    HashSchema: Hash,
+    AttributeSchema: Attribute,
+    # Plugin
+    PluginSchema: Plugin,
+    # Expressions
+    CompareExpressionSchema: CompareExpression,
+    RegexExpressionSchema: RegexExpression,
+    InExpressionSchema: InExpression,
+    NotInExpressionSchema: NotInExpression,
+    NegativeExpressionSchema: NegativeExpression,
+    BooleanExpressionSchema: BooleanExpression,
+    ExpressionSchema: Expression,
+    # Conditions
+    IfConditionSchema: IfCondition,
+    ElseIfConditionSchema: ElseIfCondition,
+    ElseConditionSchema: ElseCondition,
+    BranchSchema: Branch,
+    # Configuration
+    PluginSectionNodeSchema: PluginSectionNode,
+    ConfigSchema: Config,
+}
+
+
+# ============================================================================
+# Helper function for Schema to Node conversion
+# ============================================================================
+
+
+def _schema_to_node(schema: ASTNodeSchema) -> ASTNode:
+    """Convert a Pydantic Schema back to an AST Node.
+
+    Args:
+        schema: Pydantic Schema object
+
+    Returns:
+        Corresponding AST Node instance
+
+    Raises:
+        ValueError: If schema type is not recognized
+    """
+    schema_type = type(schema)
+    node_class = SCHEMA_TO_NODE.get(schema_type)
+
+    if node_class is None:
+        raise ValueError(f"Unknown schema type: {schema_type}")
+
+    return node_class._from_pydantic(schema)
+
+
+# ============================================================================
+# Builder functions for pyparsing
+# ============================================================================
 
 
 def build_lsstring(toks: ParseResults):

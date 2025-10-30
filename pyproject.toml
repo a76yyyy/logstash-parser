@@ -5,17 +5,17 @@ description = "Add your description here"
 readme = "README.md"
 authors = [{ name = "a76yyyy", email = "q981331502@163.com" }]
 requires-python = ">=3.10"
-dependencies = ["pyparsing>=3.2.5"]
+dependencies = ["pydantic>=2.12.3", "pyparsing>=3.2.5"]
 
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
-
 [dependency-groups]
 dev = ["mypy>=1.18.2", "ruff>=0.14.2"]
 
 [tool.mypy]
+plugins = ['pydantic.mypy']
 mypy_path = "$MYPY_CONFIG_FILE_DIR"
 exclude = ["venv", ".venv", "alembic", "runtime"]
 python_version = "3.10"

@@ -473,9 +473,9 @@ attribute_with_source = pp.originalTextFor(attribute.copy())
 
 # Branch/condition elements
 branch_with_source = pp.originalTextFor(branch.copy())
-if_rule_with_source = pp.originalTextFor(if_rule.copy())
-else_if_rule_with_source = pp.originalTextFor(else_if_rule.copy())
-else_rule_with_source = pp.originalTextFor(else_rule.copy())
+if_condition_with_source = pp.originalTextFor(if_rule.copy())
+else_if_condition_with_source = pp.originalTextFor(else_if_rule.copy())
+else_condition_with_source = pp.originalTextFor(else_rule.copy())
 condition_with_source = pp.originalTextFor(condition.copy())
 expression_with_source = pp.originalTextFor(expression.copy())
 negative_expression_with_source = pp.originalTextFor(negative_expression.copy())

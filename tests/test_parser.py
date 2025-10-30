@@ -265,7 +265,7 @@ class TestDataTypeParsing:
 
     def test_parse_regexp_with_escaped_slash(self):
         """Test parsing regular expressions with escaped slashes."""
-        config = """
+        config = r"""
         filter {
             if [path] =~ /\/var\/log\/.*/ {
                 mutate {

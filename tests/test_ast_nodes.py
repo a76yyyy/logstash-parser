@@ -1,10 +1,9 @@
 """Tests for AST node classes."""
 
-import pytest
-
 from logstash_parser import parse_logstash_config
 from logstash_parser.ast_nodes import (
     Array,
+    ASTNode,
     Attribute,
     Boolean,
     Branch,
@@ -148,13 +147,13 @@ class TestDataStructureNodes:
 
     def test_array_creation(self):
         """Test Array node creation."""
-        elements = [LSString('"a"'), LSString('"b"'), LSString('"c"')]
+        elements: list[ASTNode] = [LSString('"a"'), LSString('"b"'), LSString('"c"')]
         node = Array(elements)
         assert len(node.children) == 3
 
     def test_array_to_python(self):
         """Test Array to_python conversion."""
-        elements = [LSString('"a"'), LSString('"b"')]
+        elements: list[ASTNode] = [LSString('"a"'), LSString('"b"')]
         node = Array(elements)
         result = node.to_python()
         assert result == ["a", "b"]

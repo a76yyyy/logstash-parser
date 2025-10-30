@@ -232,7 +232,7 @@ class TestPydanticConversion:
 
         # Invalid schema (wrong node_type)
         with pytest.raises(ValidationError):
-            LSStringSchema(node_type="WrongType", lexeme='"test"', value="test")
+            LSStringSchema(node_type="WrongType", lexeme='"test"', value="test")  # type: ignore
 
 
 class TestExpressionContext:
@@ -247,7 +247,7 @@ class TestExpressionContext:
             }
         }
         """
-        ast = parse_logstash_config(config)
+        parse_logstash_config(config)
         # Expression context should be set during parsing
         # This is tested implicitly through successful parsing
 

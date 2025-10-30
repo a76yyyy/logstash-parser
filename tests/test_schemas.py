@@ -28,6 +28,7 @@ from logstash_parser.schemas import (
     RegexExpressionSchema,
     RegexpSchema,
     SelectorNodeSchema,
+    ValueSchema,
 )
 
 
@@ -44,7 +45,7 @@ class TestSimpleSchemas:
     def test_lsstring_schema_validation(self):
         """Test LSStringSchema validation."""
         with pytest.raises(ValidationError):
-            LSStringSchema(node_type="WrongType", lexeme='"test"', value="test")
+            LSStringSchema(node_type="WrongType", lexeme='"test"', value="test")  # type: ignore
 
     def test_lsbareword_schema(self):
         """Test LSBareWordSchema."""
@@ -90,7 +91,7 @@ class TestDataStructureSchemas:
 
     def test_array_schema(self):
         """Test ArraySchema."""
-        children = [
+        children: list[ValueSchema] = [
             LSStringSchema(node_type="LSString", lexeme='"a"', value="a"),
             LSStringSchema(node_type="LSString", lexeme='"b"', value="b"),
         ]
@@ -386,20 +387,20 @@ class TestSchemaValidation:
                 node_type="LSString",
                 lexeme='"test"',
                 value="test",
-                extra_field="not_allowed",
+                extra_field="not_allowed",  # type: ignore
             )
 
     def test_required_fields(self):
         """Test that required fields are enforced."""
         with pytest.raises(ValidationError):
-            LSStringSchema(node_type="LSString")
+            LSStringSchema(node_type="LSString")  # type: ignore
 
     def test_type_validation(self):
         """Test that types are validated."""
         with pytest.raises(ValidationError):
-            NumberSchema(node_type="Number", value="not_a_number")
+            NumberSchema(node_type="Number", value="not_a_number")  # type: ignore
 
     def test_literal_validation(self):
         """Test that Literal types are validated."""
         with pytest.raises(ValidationError):
-            LSStringSchema(node_type="WrongType", lexeme='"test"', value="test")
+            LSStringSchema(node_type="WrongType", lexeme='"test"', value="test")  # type: ignore

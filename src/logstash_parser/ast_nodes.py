@@ -1364,7 +1364,7 @@ class Config(ASTNode[PluginSectionNode]):
         loc: int | None = None,
     ):
         super().__init__(s=s, loc=loc)
-        self.children = toks
+        self.children = list(toks) if toks else []
 
     def to_repr(self, indent: int = 0) -> str:
         ind = " " * indent

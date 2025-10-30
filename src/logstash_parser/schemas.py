@@ -13,7 +13,7 @@ class ASTNodeSchema(BaseModel):
     """Base schema for all AST nodes."""
 
     node_type: Any = Field(..., description="Type of the AST node")
-    source_text: str | None = Field(None, exclude=True, description="Original source text (not serialized)")
+    source_text: Annotated[str | None, Field(exclude=True, description="Original source text (not serialized)")] = None
 
     model_config = {"extra": "forbid"}
 

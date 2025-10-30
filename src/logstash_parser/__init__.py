@@ -1,8 +1,9 @@
 # Defines the grammar for logstash conf files
 # Usage: PEG.config.parse_string(conf_text)
-
+from typing import cast
 
 from logstash_parser.ast_nodes import (
+    Config,
     build_array_node,
     build_attribute_node,
     build_boolean_node,
@@ -140,12 +141,25 @@ def parse_logstash_config(config_text: str):
         Config AST node
 
     Raises:
-        ParseError: If parsing fails
+        ParseError: If parsing fails, result is empty, or config has no sections
     """
+    if not config_text or not config_text.strip():
+        raise ParseError("Configuration text is empty")
+
     try:
         result = config.parse_string(config_text)
-        if not result:
+        if not result or len(result) == 0:
             raise ParseError("Failed to parse configuration: empty result")
-        return result[0]
+
+        config_node = cast(Config, result[0])
+
+        # Check if the config has any sections (input/filter/output)
+        if not config_node.children or len(config_node.children) == 0:
+            raise ParseError("Configuration has no plugin sections (input/filter/output)")
+
+        return config_node
+    except ParseError:
+        # Re-raise ParseError as-is
+        raise
     except Exception as e:
         raise ParseError(f"Failed to parse Logstash configuration: {e}") from e

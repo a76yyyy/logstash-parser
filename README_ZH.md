@@ -227,8 +227,26 @@ logstash-parser/
 │   ├── __init__.py       # PEG 类和解析动作
 │   ├── grammar.py        # pyparsing 语法定义
 │   ├── ast_nodes.py      # AST 节点类定义
+│   ├── schemas.py        # Pydantic Schema 定义
 │   └── py.typed          # 类型标注支持
+├── tests/                # 测试套件 (147 个测试, 84.52% 覆盖率)
+│   ├── conftest.py       # Pytest fixtures
+│   ├── test_parser.py    # 解析器测试
+│   ├── test_ast_nodes.py # AST 节点测试
+│   ├── test_conversions.py # 转换测试
+│   ├── test_schemas.py   # Schema 测试
+│   ├── test_integration.py # 集成测试
+│   └── test_helpers.py   # 测试工具
+├── docs/                 # 文档
+│   ├── TESTING.md        # 测试指南
+│   ├── API_REFERENCE.md  # API 文档
+│   ├── USER_GUIDE.md     # 使用指南
+│   ├── ARCHITECTURE.md   # 架构设计
+│   └── CHANGELOG.md      # 更新日志
+├── scripts/
+│   └── run_tests.sh      # 测试运行脚本
 ├── pyproject.toml        # 项目配置
+├── Makefile              # 便捷命令
 ├── LICENSE               # MIT 许可证
 ├── README.md             # 英文文档
 └── README_ZH.md          # 中文文档(本文件)

@@ -227,8 +227,26 @@ logstash-parser/
 │   ├── __init__.py       # PEG class and parse actions
 │   ├── grammar.py        # pyparsing grammar definitions
 │   ├── ast_nodes.py      # AST node class definitions
+│   ├── schemas.py        # Pydantic Schema definitions
 │   └── py.typed          # Type annotation support
+├── tests/                # Test suite (147 tests, 84.52% coverage)
+│   ├── conftest.py       # Pytest fixtures
+│   ├── test_parser.py    # Parser tests
+│   ├── test_ast_nodes.py # AST node tests
+│   ├── test_conversions.py # Conversion tests
+│   ├── test_schemas.py   # Schema tests
+│   ├── test_integration.py # Integration tests
+│   └── test_helpers.py   # Test utilities
+├── docs/                 # Documentation
+│   ├── TESTING.md        # Testing guide
+│   ├── API_REFERENCE.md  # API documentation
+│   ├── USER_GUIDE.md     # User guide
+│   ├── ARCHITECTURE.md   # Architecture design
+│   └── CHANGELOG.md      # Version history
+├── scripts/
+│   └── run_tests.sh      # Test runner script
 ├── pyproject.toml        # Project configuration
+├── Makefile              # Convenient commands
 ├── LICENSE               # MIT License
 ├── README.md             # This file
 └── README_ZH.md          # Chinese documentation

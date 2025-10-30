@@ -12,7 +12,13 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [dependency-groups]
-dev = ["mypy>=1.18.2", "ruff>=0.14.2"]
+dev = [
+    "mypy>=1.18.2",
+    "pytest>=8.4.2",
+    "pytest-cov>=7.0.0",
+    "ruff>=0.14.2",
+]
+test = ["pytest>=8.0.0", "pytest-cov>=4.1.0", "pytest-xdist>=3.5.0"]
 
 [tool.mypy]
 plugins = ['pydantic.mypy']
@@ -137,4 +143,24 @@ exclude_lines = [
     "raise ImportError",
     "if TYPE_CHECKING:",
     "@overload",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = [
+    "-v",
+    "--strict-markers",
+    "--tb=short",
+    "--cov=src/logstash_parser",
+    "--cov-report=term-missing",
+    "--cov-report=html",
+    "--cov-report=xml",
+]
+markers = [
+    "unit: Unit tests",
+    "integration: Integration tests",
+    "slow: Slow running tests",
 ]

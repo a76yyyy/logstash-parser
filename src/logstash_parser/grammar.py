@@ -120,10 +120,10 @@ boolean_operator.set_name("boolean_operator")
 
 r"""
   rule regexp
-    ( '/' ( '\/' / !'/' . )* '/'  <LogStash::Config::AST::RegExp>)
+    ( '/' ( '\/' / !'/' . )* '/' <LogStash::Config::AST::RegExp>)
   end
 """
-regexp = pp.QuotedString(quote_char="/", esc_char=None)
+regexp = pp.QuotedString(quote_char="/", esc_char="\\", unquote_results=False)
 regexp.set_name("regexp")
 
 r"""

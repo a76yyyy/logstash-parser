@@ -117,6 +117,7 @@ class LSString(ASTNode):
             raise ValueError(f"Invalid string literal {lexeme!r}: {e}") from None
 
     def to_python(self):
+        # 简单节点:直接返回 Python 原生类型
         if self.in_expression_context:
             return repr(self.value)
         return self.value
@@ -152,6 +153,7 @@ class LSBareWord(ASTNode):
         return " " * indent + f"LSBareWord({self.value})"
 
     def to_python(self):
+        # 简单节点:直接返回字符串
         return self.value
 
     def to_logstash(self):
@@ -175,6 +177,7 @@ class Regexp(ASTNode):
             raise ValueError(f"Invalid string literal {lexeme!r}: {e}") from None
 
     def to_python(self):
+        # 简单节点:直接返回正则表达式字符串
         if self.in_expression_context:
             return repr(self.value)
         return self.value
@@ -205,6 +208,7 @@ class Number(ASTNode):
         return " " * indent + f"Number({self.value})"
 
     def to_python(self) -> int | float:
+        # 简单节点:直接返回数字
         return self.value
 
     def to_logstash(self, indent: int = 0) -> int | float:
@@ -227,7 +231,7 @@ class Array(ASTNode[ASTNode]):
             child.parent = self
 
     def to_python(self) -> list[Any]:
-        # If the element is LSString, then the .to_python() will remove quotation marks and parse it as a python object
+        # 数据结构节点:直接返回 Python list
         return [val.to_python() for val in self.children]
 
     def __repr__(self):
@@ -283,8 +287,9 @@ class HashEntryNode(ASTNode):
             out += "\n"
         return out
 
-    def to_python(self) -> Any:
-        return super().to_python()
+    def to_python(self) -> tuple[str | int | float, Any]:
+        # HashEntry 返回键值对元组，由 Hash 节点组装成 dict
+        return (self.key.to_python(), self.value.to_python())
 
 
 class Hash(ASTNode[HashEntryNode]):
@@ -313,10 +318,12 @@ class Hash(ASTNode[HashEntryNode]):
         return f"{ind}Hash {{\n{children}\n{ind}}}"
 
     def to_python(self) -> dict[str | int | float, Any]:
+        # 数据结构节点:直接返回 Python dict
         hash_object: dict[str | int | float, Any] = {}
 
         for entry in self.children:
-            hash_object[entry.key.to_python()] = entry.value.to_python()
+            key, value = entry.to_python()
+            hash_object[key] = value
 
         return hash_object
 
@@ -350,10 +357,10 @@ class Attribute(ASTNode):
         return f"{ind}Attribute(\n{self.name.to_repr(indent + 2)} => {self.value.to_repr(indent + 2)}\n{ind})"
 
     def to_python(self) -> dict[str, Any]:
+        # Attribute 节点:返回键值对 dict
         name_key = self.name.to_python() if isinstance(self.name, ASTNode) else self.name
         value_val = self.value.to_python() if isinstance(self.value, ASTNode) else self.value
-        attribute_object: dict[str, Any] = {name_key: value_val}
-        return attribute_object
+        return {name_key: value_val}
 
     def to_logstash(self, indent: int = 0) -> str:
         ind = indent * " "
@@ -419,6 +426,7 @@ class Boolean(ASTNode):
         self.value: bool = value
 
     def to_python(self) -> bool:
+        # 简单节点:直接返回布尔值
         return self.value
 
     def to_logstash(self, indent: int = 0) -> str:
@@ -456,6 +464,7 @@ class SelectorNode(ASTNode):
         return " " * indent + f"SelectorNode({self.raw})"
 
     def to_python(self) -> str:
+        # 简单节点:直接返回选择器字符串
         return str(self.raw)
 
     def to_logstash(self, indent: int = 0) -> str:
@@ -484,8 +493,14 @@ class RegexExpression(ASTNode):
         for child in self.children:
             child.parent = self
 
-    def to_python(self) -> str:
-        return self.to_logstash()
+    def to_python(self) -> dict[str, Any]:
+        # Expression 节点:返回结构化对象
+        return {
+            "type": "regex_expression",
+            "left": self.left.to_python(),
+            "operator": self.operator,
+            "pattern": self.pattern.to_python(),
+        }
 
     def to_logstash(self, indent: int = 0) -> str:
         return f"{self.left.to_logstash()} {self.operator} {self.pattern.to_logstash()}"
@@ -511,10 +526,14 @@ class CompareExpression(ASTNode):
     def __repr__(self):
         return f"{self.left} {self.operator} {self.right}"
 
-    def to_python(self):
-        left = self.left.to_python() if isinstance(self.left, ASTNode) else self.left
-        right = self.right.to_python() if isinstance(self.right, ASTNode) else self.right
-        return f"{left} {self.operator} {right}"
+    def to_python(self) -> dict[str, Any]:
+        # Expression 节点:返回结构化对象
+        return {
+            "type": "compare_expression",
+            "left": self.left.to_python(),
+            "operator": self.operator,
+            "right": self.right.to_python(),
+        }
 
     def to_logstash(self, indent=0):
         return f"{self.left.to_logstash()} {self.operator} {self.right.to_logstash()}"
@@ -540,8 +559,14 @@ class InExpression(ASTNode):
     def __repr__(self):
         return f"InExpression({self.value} {self.operator} {self.collection})"
 
-    def to_python(self):
-        return f"{self.value.to_python()} {self.operator} {self.collection.to_python()}"
+    def to_python(self) -> dict[str, Any]:
+        # Expression 节点:返回结构化对象
+        return {
+            "type": "in_expression",
+            "value": self.value.to_python(),
+            "operator": self.operator,
+            "collection": self.collection.to_python(),
+        }
 
     def to_logstash(self, indent=0):
         return f"{self.value.to_logstash()} {self.operator} {self.collection.to_logstash()}"
@@ -570,8 +595,14 @@ class NotInExpression(ASTNode):
     def to_logstash(self, indent=0):
         return f"{self.value.to_logstash()} {self.operator} {self.collection.to_logstash()})"
 
-    def to_python(self):
-        return f"{self.value.to_python()} {self.operator} {self.collection.to_python()}"
+    def to_python(self) -> dict[str, Any]:
+        # Expression 节点:返回结构化对象
+        return {
+            "type": "not_in_expression",
+            "value": self.value.to_python(),
+            "operator": self.operator,
+            "collection": self.collection.to_python(),
+        }
 
 
 class NegativeExpression(ASTNode):
@@ -597,8 +628,13 @@ class NegativeExpression(ASTNode):
     def to_repr(self, indent=0):
         return f"not {self.expression}".replace("not not", "")
 
-    def to_python(self):
-        return f"not {self.expression.to_python()}".replace("not not ", "")
+    def to_python(self) -> dict[str, Any]:
+        # Expression 节点:返回结构化对象
+        return {
+            "type": "negative_expression",
+            "operator": self.operator,
+            "expression": self.expression.to_python(),
+        }
 
     def to_logstash(self, indent=0):
         return f"!({self.expression.to_logstash()})"
@@ -643,7 +679,8 @@ class Expression(ASTNode):
         return self.condition.to_logstash()
 
     def to_python(self):
-        return f"{self.condition.to_python()}"
+        # Expression 是包装器，直接返回内部 condition 的结果
+        return self.condition.to_python()
 
     def __repr__(self):
         return f"{self.condition}".replace(
@@ -676,10 +713,14 @@ class BooleanExpression(ASTNode[ASTNode]):
     def __repr__(self):
         return f"({self.left} {self.operator} {self.right})"
 
-    def to_python(self):
-        left = f"{self.left.to_python()}" if isinstance(self.left, ASTNode) else self.left
-        right = f"{self.right.to_python()}" if isinstance(self.right, ASTNode) else self.right
-        return f"({left} {self.operator} {right})"
+    def to_python(self) -> dict[str, Any]:
+        # Expression 节点:返回结构化对象
+        return {
+            "type": "boolean_expression",
+            "left": self.left.to_python(),
+            "operator": self.operator,
+            "right": self.right.to_python(),
+        }
 
     def to_source(self):
         # 从子节点重构 source text
@@ -707,14 +748,13 @@ class IfCondition(ASTNode["Plugin | Branch"]):
         children = "\n".join(c.to_repr(indent + 2) for c in self.children)
         return f"{header} {{\n{children}\n{ind}}}"
 
-    def to_python(self):
-        if_conditio_object = {}
-
-        if_conditio_object["if_condition"] = {
+    def to_python(self) -> dict[str, Any]:
+        # Branch condition 节点:返回结构化对象
+        return {
+            "type": "if",
             "expr": self.expr.to_python(),
-            "children": [child.to_python() for child in self.children],
+            "body": [child.to_python() for child in self.children],
         }
-        return if_conditio_object
 
     def to_logstash(self, indent=0, is_dm_branch=False):
         if not is_dm_branch:
@@ -746,14 +786,13 @@ class ElseIfCondition(ASTNode["Plugin | Branch"]):
         children = "\n".join(c.to_repr(indent + 2) for c in self.children)
         return f"{header} {{\n{children}\n{ind}}}"
 
-    def to_python(self):
-        else_if_conditio_object = {}
-
-        else_if_conditio_object["else_if_condition"] = {
+    def to_python(self) -> dict[str, Any]:
+        # Branch condition 节点:返回结构化对象
+        return {
+            "type": "else_if",
             "expr": self.expr.to_python(),
-            "children": [child.to_python() for child in self.children],
+            "body": [child.to_python() for child in self.children],
         }
-        return else_if_conditio_object
 
     def to_logstash(self, indent=0, is_dm_branch=False):
         if not is_dm_branch:
@@ -788,14 +827,13 @@ class ElseCondition(ASTNode["Plugin | Branch"]):
         children = "\n".join(c.to_repr(indent + 2) for c in self.children)
         return f"{header} {{\n{children}\n{ind}}}"
 
-    def to_python(self):
-        else_conditio_object = {}
-
-        else_conditio_object["else_condition"] = {
-            "expr": None if self.expr is None else self.expr.to_python(),
-            "children": [child.to_python() for child in self.children],
+    def to_python(self) -> dict[str, Any]:
+        # Branch condition 节点:返回结构化对象
+        # else 没有 expr
+        return {
+            "type": "else",
+            "body": [child.to_python() for child in self.children],
         }
-        return else_conditio_object
 
     def to_logstash(self, indent=0, is_dm_branch=False):
         if not is_dm_branch:
@@ -845,11 +883,12 @@ class Branch(ASTNode[IfCondition | ElseIfCondition | ElseCondition]):
         for child in self.children:
             child.parent = self
 
-    def to_python(self):
-        branch_list = []
-        for child in self.children:
-            branch_list.append(child.to_python())
-        return {"branch": branch_list}
+    def to_python(self) -> dict[str, Any]:
+        # Branch 节点:返回结构化对象
+        return {
+            "type": "branch",
+            "conditions": [child.to_python() for child in self.children],
+        }
 
     def to_logstash(self, indent=0, is_dm_branch=False) -> str:
         out = ""

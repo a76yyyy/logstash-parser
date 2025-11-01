@@ -337,8 +337,8 @@ class TestExpressionNodesFromLogstash:
         """Test parsing NotInExpression."""
         node = NotInExpression.from_logstash("[status] not in [400, 500]")
         assert isinstance(node, NotInExpression)
-        # Operator is stored as "not" not "not in"
-        assert node.operator == "not"
+        # After grammar fix, operator is stored as "not in" (combined token)
+        assert node.operator == "not in"
 
     def test_negative_expression(self):
         """Test parsing NegativeExpression."""

@@ -50,8 +50,9 @@ class TestParseErrors:
 
     def test_config_without_sections_error(self):
         """Test that config without sections raises ParseError."""
-        # This should parse but have no sections
-        with pytest.raises(ParseError, match="no plugin sections"):
+        # After fixing grammar to require at least one plugin_section,
+        # this now fails at parse time (not validation time)
+        with pytest.raises(ParseError, match="Failed to parse Logstash configuration"):
             parse_logstash_config("# just a comment")
 
     def test_unexpected_exception_handling(self):

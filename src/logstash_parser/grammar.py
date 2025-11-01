@@ -165,7 +165,9 @@ r"""
     "not " cs "in"
   end
 """
-not_in_operator = pp.Literal("not") + pp.Literal("in")
+# "not" followed by whitespace/comment, then "in"
+# Combine into single token "not in" for compatibility with build function
+not_in_operator = pp.Combine(pp.Literal("not") + pp.OneOrMore(cs) + pp.Literal("in"), adjacent=False)
 
 r"""
   rule not_in_expression
@@ -200,7 +202,8 @@ r"""
     <LogStash::Config::AST::Bareword>
   end
 """
-bare_word = pp.Word(pp.alphas + "_", pp.alphanums + "_")
+# Require at least 2 characters: first char [A-Za-z_], then at least one [A-Za-z0-9_]
+bare_word = pp.Word(pp.alphas + "_", pp.alphanums + "_", min=2)
 bare_word.set_name("bare_word")
 
 r"""
@@ -208,7 +211,8 @@ r"""
     bareword
   end
 """
-method = pp.Word(pp.alphas + "_", pp.alphanums + "_")
+# Method follows bareword rule: at least 2 characters
+method = pp.Word(pp.alphas + "_", pp.alphanums + "_", min=2)
 method.set_name("method")
 
 r"""
@@ -224,7 +228,7 @@ r"""
     ("input" / "filter" / "output")
   end
 """
-plugin_type = pp.Literal("input") | pp.Literal("filter") | pp.Literal("filter") | pp.Literal("output")
+plugin_type = pp.Literal("input") | pp.Literal("filter") | pp.Literal("output")
 plugin_type.set_name("plugin_type")
 
 r"""
@@ -458,7 +462,8 @@ r"""
     cs plugin_section cs (cs plugin_section)* cs <LogStash::Config::AST::Config>
   end
 """
-config = pp.ZeroOrMore(plugin_section)
+# Require at least one plugin_section (not zero)
+config = pp.OneOrMore(plugin_section)
 config.ignore(comment)
 config.set_name("config")
 

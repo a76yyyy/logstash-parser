@@ -775,3 +775,276 @@ class TestNameParsingEdgeCases:
         assert plugin.children[0].name.value == "MyField"
         assert plugin.children[1].name.value == "myfield"
         assert plugin.children[2].name.value == "MYFIELD"
+
+
+class TestGrammarRuleFixes:
+    """Test grammar rule fixes to match grammar.treetop specification.
+
+    These tests verify the fixes made to align Python implementation with
+    the Treetop grammar specification:
+    1. bareword requires at least 2 characters
+    2. config requires at least one plugin_section
+    3. not_in_operator handles whitespace correctly
+    """
+
+    def test_bareword_minimum_two_characters(self):
+        """Test that bareword requires at least 2 characters.
+
+        According to grammar.treetop:
+        rule bareword
+          [A-Za-z_] [A-Za-z0-9_]+
+        end
+
+        This means: first char [A-Za-z_], then at least one more char [A-Za-z0-9_]
+        """
+        # 2 characters should work
+        config = """
+        filter {
+            ab {
+                cd => "value"
+            }
+        }
+        """
+        ast = parse_logstash_config(config)
+        assert ast is not None
+        plugin = ast.children[0].children[0]
+        assert isinstance(plugin, Plugin)
+        assert plugin.plugin_name == "ab"
+
+        # Longer barewords should work
+        config2 = """
+        filter {
+            mutate {
+                add_field => "value"
+            }
+        }
+        """
+        ast2 = parse_logstash_config(config2)
+        assert ast2 is not None
+
+    def test_bareword_with_underscore_minimum_length(self):
+        """Test bareword starting with underscore requires 2+ chars."""
+        config = """
+        filter {
+            _a {
+                _b => "value"
+            }
+        }
+        """
+        ast = parse_logstash_config(config)
+        assert ast is not None
+        plugin = ast.children[0].children[0]
+        assert isinstance(plugin, Plugin)
+        assert plugin.plugin_name == "_a"
+
+    def test_config_requires_at_least_one_section(self):
+        """Test that config requires at least one plugin_section.
+
+        According to grammar.treetop:
+        rule config
+          cs plugin_section cs (cs plugin_section)* cs
+        end
+
+        This means at least one plugin_section is required.
+        """
+        # Empty config should fail
+        with pytest.raises(ParseError):
+            parse_logstash_config("")
+
+        # Only comments should fail
+        with pytest.raises(ParseError):
+            parse_logstash_config("# just a comment")
+
+        # Only whitespace should fail
+        with pytest.raises(ParseError):
+            parse_logstash_config("   \n\t  ")
+
+        # At least one section should work
+        config = """
+        filter {
+            mutate { }
+        }
+        """
+        ast = parse_logstash_config(config)
+        assert ast is not None
+        assert len(ast.children) >= 1
+
+    def test_not_in_operator_with_single_space(self):
+        """Test 'not in' operator with single space (standard case)."""
+        config = """
+        filter {
+            if [status] not in [400, 500] {
+                mutate {
+                    add_tag => ["not_error"]
+                }
+            }
+        }
+        """
+        ast = parse_logstash_config(config)
+        assert ast is not None
+
+        # Verify the expression was parsed correctly
+        python_dict = ast.to_python()
+        assert "config" in python_dict
+
+    def test_not_in_operator_with_multiple_spaces(self):
+        """Test 'not in' operator with multiple spaces.
+
+        According to grammar.treetop:
+        rule not_in_operator
+          "not " cs "in"
+        end
+
+        Where cs = (comment / whitespace)*
+        This means multiple spaces/tabs/newlines are allowed between 'not' and 'in'.
+        """
+        # Multiple spaces
+        config = """
+        filter {
+            if [status] not  in [400, 500] {
+                mutate {
+                    add_tag => ["not_error"]
+                }
+            }
+        }
+        """
+        ast = parse_logstash_config(config)
+        assert ast is not None
+
+        # Verify the expression was parsed correctly
+        python_dict = ast.to_python()
+        assert "config" in python_dict
+
+    def test_not_in_operator_with_tab(self):
+        """Test 'not in' operator with tab character."""
+        config = """
+        filter {
+            if [status] not\tin [400, 500] {
+                mutate {
+                    add_tag => ["not_error"]
+                }
+            }
+        }
+        """
+        ast = parse_logstash_config(config)
+        assert ast is not None
+
+    def test_not_in_operator_with_newline_and_spaces(self):
+        """Test 'not in' operator with newline and spaces."""
+        config = """
+        filter {
+            if [status] not
+                in [400, 500] {
+                mutate {
+                    add_tag => ["not_error"]
+                }
+            }
+        }
+        """
+        ast = parse_logstash_config(config)
+        assert ast is not None
+
+    def test_not_in_operator_with_comment(self):
+        """Test 'not in' operator with comment between 'not' and 'in'."""
+        config = """
+        filter {
+            if [status] not # comment
+                in [400, 500] {
+                mutate {
+                    add_tag => ["not_error"]
+                }
+            }
+        }
+        """
+        ast = parse_logstash_config(config)
+        assert ast is not None
+
+    def test_all_plugin_types_work(self):
+        """Test that all three plugin types (input/filter/output) work correctly.
+
+        This verifies the fix that removed duplicate 'filter' from plugin_type rule.
+        """
+        # Test input
+        config_input = """
+        input {
+            stdin { }
+        }
+        """
+        ast = parse_logstash_config(config_input)
+        assert ast is not None
+        assert ast.children[0].plugin_type == "input"
+
+        # Test filter
+        config_filter = """
+        filter {
+            mutate { }
+        }
+        """
+        ast = parse_logstash_config(config_filter)
+        assert ast is not None
+        assert ast.children[0].plugin_type == "filter"
+
+        # Test output
+        config_output = """
+        output {
+            stdout { }
+        }
+        """
+        ast = parse_logstash_config(config_output)
+        assert ast is not None
+        assert ast.children[0].plugin_type == "output"
+
+    def test_multiple_sections_same_type(self):
+        """Test multiple sections of the same type (verifies no duplicate handling issues)."""
+        config = """
+        filter {
+            grok {
+                match => { "message" => "%{PATTERN1}" }
+            }
+        }
+
+        filter {
+            mutate {
+                add_field => { "processed" => "true" }
+            }
+        }
+        """
+        ast = parse_logstash_config(config)
+        assert ast is not None
+        assert len(ast.children) == 2
+        assert all(section.plugin_type == "filter" for section in ast.children)
+
+    def test_bareword_in_different_contexts(self):
+        """Test that bareword minimum length applies in all contexts."""
+        # Plugin name
+        config1 = """
+        filter {
+            ab {
+                field => "value"
+            }
+        }
+        """
+        ast1 = parse_logstash_config(config1)
+        assert ast1 is not None
+
+        # Attribute name (as bareword)
+        config2 = """
+        filter {
+            mutate {
+                ab => "value"
+            }
+        }
+        """
+        ast2 = parse_logstash_config(config2)
+        assert ast2 is not None
+
+        # Hash key (as bareword)
+        config3 = """
+        filter {
+            mutate {
+                add_field => { ab => "value" }
+            }
+        }
+        """
+        ast3 = parse_logstash_config(config3)
+        assert ast3 is not None

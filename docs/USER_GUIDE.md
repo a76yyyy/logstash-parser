@@ -190,34 +190,46 @@ grok_plugins = find_plugins(ast, "grok")
 ```python
 from logstash_parser.ast_nodes import (
     Plugin, Attribute, LSBareWord, LSString,
-    Hash, HashEntryNode
+    Hash, HashEntryNode, PluginSectionNode
 )
 
 # 创建新插件
 new_plugin = Plugin(
     "mutate",
-    [
+    tuple([
         Attribute(
             LSBareWord("add_field"),
-            Hash([
+            Hash(tuple([
                 HashEntryNode(
                     LSString('"new_field"'),
                     LSString('"value"')
                 )
-            ])
+            ]))
         )
-    ]
+    ])
 )
 
-# 添加到 filter 段
+# 添加到 filter 段（children 是 tuple，需要重新创建）
+new_sections = []
 for section in ast.children:
     if section.plugin_type == "filter":
-        section.children.append(new_plugin)
+        # 创建新的 children tuple，包含原有插件和新插件
+        new_children = section.children + (new_plugin,)
+        new_section = PluginSectionNode(section.plugin_type, new_children)
+        new_sections.append(new_section)
+    else:
+        new_sections.append(section)
+
+# 创建新的 Config
+from logstash_parser.ast_nodes import Config
+updated_ast = Config(tuple(new_sections))
 
 # 生成更新后的配置
-updated_config = ast.to_logstash()
+updated_config = updated_ast.to_logstash()
 print(updated_config)
 ```
+
+**注意**: 由于 `children` 是不可变的 `tuple`，不能直接修改。需要创建新的 tuple 并重新构建节点。
 
 ### 4. 条件表达式处理
 
@@ -237,17 +249,25 @@ condition = CompareExpression(
 # 直接使用表达式，无需包装
 if_branch = IfCondition(
     condition,
-    [grok_plugin]
+    tuple([grok_plugin])  # children 必须是 tuple
 )
 
-else_branch = ElseCondition([mutate_plugin])
+else_branch = ElseCondition(tuple([mutate_plugin]))  # children 必须是 tuple
 
 branch = Branch(if_branch, [], else_branch)
 
-# 添加到 filter 段
+# 添加到 filter 段（需要重新创建 section）
+new_sections = []
 for section in ast.children:
     if section.plugin_type == "filter":
-        section.children.append(branch)
+        new_children = section.children + (branch,)
+        new_section = PluginSectionNode(section.plugin_type, new_children)
+        new_sections.append(new_section)
+    else:
+        new_sections.append(section)
+
+# 创建新的 Config
+updated_ast = Config(tuple(new_sections))
 ```
 
 ### 5. 验证配置
@@ -267,14 +287,15 @@ except ValidationError as e:
 ### 6. 部分序列化
 
 ```python
-# 包含 source_text
-full_data = schema.model_dump(exclude_none=False)
+# Schema 不包含 source_text，已经是最小化的
+data = schema.model_dump()
 
-# 排除 source_text（默认）
-minimal_data = schema.model_dump()
+# 排除 None 值
+minimal_data = schema.model_dump(exclude_none=True)
 
-# 只序列化特定字段
-partial_data = schema.model_dump(include={'node_type', 'children'})
+# 只序列化特定字段（根据实际 Schema 结构）
+# 例如，对于 ConfigSchema:
+partial_data = schema.model_dump(include={'config'})
 ```
 
 ### 7. 生成 JSON Schema
@@ -344,28 +365,23 @@ if source:
 ```python
 from logstash_parser.ast_nodes import Config, PluginSectionNode
 
-# 创建空配置
-config = Config([])
+# 创建各个段
+input_section = PluginSectionNode("input", tuple([beats_plugin]))
+filter_section = PluginSectionNode("filter", tuple([grok_plugin]))
+output_section = PluginSectionNode("output", tuple([es_plugin]))
 
-# 添加 input 段
-input_section = PluginSectionNode("input", [beats_plugin])
-config.children.append(input_section)
-
-# 添加 filter 段
-filter_section = PluginSectionNode("filter", [grok_plugin])
-config.children.append(filter_section)
-
-# 添加 output 段
-output_section = PluginSectionNode("output", [es_plugin])
-config.children.append(output_section)
+# 创建配置（一次性构建）
+config = Config(tuple([input_section, filter_section, output_section]))
 ```
+
+**注意**: 由于 `children` 是 `tuple`，建议一次性构建完整的配置结构，而不是逐步添加。
 
 ### 6. 配置合并
 
 ```python
 def merge_configs(config1, config2):
     """合并两个配置"""
-    merged = Config([])
+    merged_sections = []
 
     # 合并各个段
     for section_type in ["input", "filter", "output"]:
@@ -373,13 +389,19 @@ def merge_configs(config1, config2):
         sections2 = [s for s in config2.children if s.plugin_type == section_type]
 
         if sections1 or sections2:
-            merged_section = PluginSectionNode(section_type, [])
+            # 收集所有 children
+            all_children = []
             for s in sections1 + sections2:
-                merged_section.children.extend(s.children)
-            merged.children.append(merged_section)
+                all_children.extend(s.children)
 
-    return merged
+            # 创建合并后的 section
+            merged_section = PluginSectionNode(section_type, tuple(all_children))
+            merged_sections.append(merged_section)
+
+    return Config(tuple(merged_sections))
 ```
+
+**注意**: 由于 `children` 是 `tuple`，需要先收集所有子节点到 list，然后转换为 tuple 创建新节点。
 
 ---
 
@@ -405,17 +427,17 @@ condition = BooleanExpression(
 **A:** 递归创建 `Hash` 和 `HashEntryNode`：
 
 ```python
-nested_hash = Hash([
+nested_hash = Hash(tuple([
     HashEntryNode(
         LSString('"outer"'),
-        Hash([
+        Hash(tuple([
             HashEntryNode(
                 LSString('"inner"'),
                 LSString('"value"')
             )
-        ])
+        ]))
     )
-])
+]))
 ```
 
 ### Q3: 如何验证生成的配置是否正确？
@@ -471,6 +493,7 @@ json_str = schema.model_dump_json(
 **症状：** `ParseError: Failed to parse configuration`
 
 **解决方案：**
+
 1. 检查配置语法是否正确
 2. 确保引号匹配
 3. 检查括号是否闭合
@@ -492,6 +515,7 @@ except ParseError as e:
 **症状：** `ValidationError` 或序列化错误
 
 **解决方案：**
+
 1. 检查数据类型是否正确
 2. 确保必填字段存在
 3. 验证字段值是否有效
@@ -511,6 +535,7 @@ except Exception as e:
 **症状：** `TypeError` 或类型不匹配
 
 **解决方案：**
+
 1. 使用类型检查
 2. 验证节点类型
 3. 使用 isinstance 检查
@@ -530,14 +555,15 @@ else:
 **症状：** 处理大型配置时内存占用高
 
 **解决方案：**
+
 1. 使用流式处理
 2. 及时释放不需要的对象
-3. 避免保留完整的 source_text
+3. Schema 不包含 source_text，已经是最小化的
 
 ```python
-# 不保留 source_text
+# Schema 已经不包含 source_text
 schema = ast.to_python(as_pydantic=True)
-json_str = schema.model_dump_json(exclude={'source_text'})
+json_str = schema.model_dump_json()
 ```
 
 ### 问题 5: 性能问题
@@ -545,6 +571,7 @@ json_str = schema.model_dump_json(exclude={'source_text'})
 **症状：** 解析或序列化速度慢
 
 **解决方案：**
+
 1. 使用缓存
 2. 批量处理
 3. 避免重复解析
@@ -598,17 +625,17 @@ def create_grok_filter(pattern):
     """创建 grok filter 模板"""
     return Plugin(
         "grok",
-        [
+        tuple([
             Attribute(
                 LSBareWord("match"),
-                Hash([
+                Hash(tuple([
                     HashEntryNode(
                         LSString('"message"'),
                         LSString(f'"{pattern}"')
                     )
-                ])
+                ]))
             )
-        ]
+        ])
     )
 
 # 使用模板
@@ -628,11 +655,15 @@ def validate_config(config_text):
         # 转换为 Schema（触发验证）
         schema = ast.to_python(as_pydantic=True)
 
-        # 检查必要的段
-        sections = {s.plugin_type for s in schema.children}
-        if 'input' not in sections:
+        # 检查必要的段（从 ConfigSchema 获取）
+        plugin_types = set()
+        for section_schema in schema.config:
+            # PluginSectionSchema 的 plugin_section 是 dict
+            plugin_types.update(section_schema.plugin_section.keys())
+
+        if 'input' not in plugin_types:
             return False, "缺少 input 段"
-        if 'output' not in sections:
+        if 'output' not in plugin_types:
             return False, "缺少 output 段"
 
         return True, "配置有效"

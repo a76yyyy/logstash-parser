@@ -8,18 +8,18 @@
 
 ## 特性
 
-* 将 Logstash 管道配置字符串解析为清晰、可遍历的 AST
-* 每个 AST 节点支持:
-  * `.to_python()`: 将子树转换为 Python 原生数据结构
-  * `.to_logstash()`: 将子树转换回有效的 Logstash 配置字符串
-  * `.to_source()`: 获取节点的原始源文本(保留格式)
-* 支持完整的 Logstash 语法:
-  * 插件配置(input/filter/output)
-  * 条件分支(if/else if/else)
-  * 数据类型(字符串、数字、布尔值、数组、哈希表)
-  * 字段引用(selector)
-  * 表达式(比较、正则、逻辑运算)
-* 适用于构建需要分析、转换或生成 Logstash 配置的工具
+- 将 Logstash 管道配置字符串解析为清晰、可遍历的 AST
+- 每个 AST 节点支持:
+  - `.to_python()`: 将子树转换为 Python 原生数据结构
+  - `.to_logstash()`: 将子树转换回有效的 Logstash 配置字符串
+  - `.to_source()`: 获取节点的原始源文本(保留格式)
+- 支持完整的 Logstash 语法:
+  - 插件配置(input/filter/output)
+  - 条件分支(if/else if/else)
+  - 数据类型(字符串、数字、布尔值、数组、哈希表)
+  - 字段引用(selector)
+  - 表达式(比较、正则、逻辑运算)
+- 适用于构建需要分析、转换或生成 Logstash 配置的工具
 
 ---
 
@@ -46,7 +46,7 @@ pip install -e .
 ### 基本用法
 
 ```python
-from logstash_parser.ast_nodes import Config
+from logstash_parser import parse_logstash_config
 
 # Logstash 配置示例
 logstash_conf = """
@@ -59,8 +59,8 @@ filter {
 }
 """
 
-# 解析配置
-ast = Config.from_logstash(logstash_conf)
+# 解析配置（推荐）
+ast = parse_logstash_config(logstash_conf)
 
 # 转换为 Python 字典
 python_dict = ast.to_python()
@@ -74,7 +74,7 @@ print(logstash_config)
 ### 完整示例
 
 ```python
-from logstash_parser.ast_nodes import Config
+from logstash_parser import parse_logstash_config
 
 # 包含多个部分的完整配置
 full_config = """
@@ -105,7 +105,7 @@ output {
 """
 
 # 解析
-ast = Config.from_logstash(full_config)
+ast = parse_logstash_config(full_config)
 
 # 访问特定部分
 python_repr = ast.to_python()
@@ -115,7 +115,7 @@ print("Filter plugins:", python_repr.get('filter', []))
 ### 遍历 AST
 
 ```python
-from logstash_parser.ast_nodes import Config
+from logstash_parser import parse_logstash_config
 
 logstash_conf = """
 filter {
@@ -125,7 +125,7 @@ filter {
 }
 """
 
-ast = Config.from_logstash(logstash_conf)
+ast = parse_logstash_config(logstash_conf)
 
 # 遍历所有子节点
 for section in ast.children:
@@ -144,45 +144,45 @@ for section in ast.children:
 
 ### 核心节点
 
-| 节点类型 | 说明 | 示例 |
-|---------|------|------|
-| `Config` | 根节点,包含所有插件部分 | 整个配置文件 |
-| `PluginSectionNode` | 插件部分(input/filter/output) | `filter { ... }` |
-| `Plugin` | 插件定义 | `grok { ... }` |
-| `Attribute` | 插件属性 | `match => { ... }` |
-| `Branch` | 条件分支 | `if/else if/else` |
+| 节点类型            | 说明                          | 示例               |
+| ------------------- | ----------------------------- | ------------------ |
+| `Config`            | 根节点,包含所有插件部分       | 整个配置文件       |
+| `PluginSectionNode` | 插件部分(input/filter/output) | `filter { ... }`   |
+| `Plugin`            | 插件定义                      | `grok { ... }`     |
+| `Attribute`         | 插件属性                      | `match => { ... }` |
+| `Branch`            | 条件分支                      | `if/else if/else`  |
 
 ### 数据类型节点
 
-| 节点类型 | 说明 | 示例 |
-|---------|------|------|
-| `LSString` | 字符串 | `"message"` 或 `'message'` |
-| `LSBareWord` | 裸字(标识符) | `mutate`, `grok` |
-| `Number` | 数字 | `123`, `45.67` |
-| `Boolean` | 布尔值 | `true`, `false` |
-| `Array` | 数组 | `[1, 2, 3]` |
-| `Hash` | 哈希表 | `{ "key" => "value" }` |
-| `Regexp` | 正则表达式 | `/pattern/` |
-| `SelectorNode` | 字段引用 | `[field][subfield]` |
+| 节点类型       | 说明         | 示例                       |
+| -------------- | ------------ | -------------------------- |
+| `LSString`     | 字符串       | `"message"` 或 `'message'` |
+| `LSBareWord`   | 裸字(标识符) | `mutate`, `grok`           |
+| `Number`       | 数字         | `123`, `45.67`             |
+| `Boolean`      | 布尔值       | `true`, `false`            |
+| `Array`        | 数组         | `[1, 2, 3]`                |
+| `Hash`         | 哈希表       | `{ "key" => "value" }`     |
+| `Regexp`       | 正则表达式   | `/pattern/`                |
+| `SelectorNode` | 字段引用     | `[field][subfield]`        |
 
 ### 表达式节点
 
-| 节点类型 | 说明 | 示例 |
-|---------|------|------|
-| `CompareExpression` | 比较表达式 | `[status] == 200` |
-| `RegexExpression` | 正则匹配 | `[message] =~ /error/` |
-| `InExpression` | in 表达式 | `[status] in [200, 201]` |
-| `NotInExpression` | not in 表达式 | `[status] not in [400, 500]` |
-| `BooleanExpression` | 布尔表达式 | `expr1 and expr2` |
-| `NegativeExpression` | 否定表达式 | `![field]` |
+| 节点类型             | 说明          | 示例                         |
+| -------------------- | ------------- | ---------------------------- |
+| `CompareExpression`  | 比较表达式    | `[status] == 200`            |
+| `RegexExpression`    | 正则匹配      | `[message] =~ /error/`       |
+| `InExpression`       | in 表达式     | `[status] in [200, 201]`     |
+| `NotInExpression`    | not in 表达式 | `[status] not in [400, 500]` |
+| `BooleanExpression`  | 布尔表达式    | `expr1 and expr2`            |
+| `NegativeExpression` | 否定表达式    | `![field]`                   |
 
 ### 条件节点
 
-| 节点类型 | 说明 |
-|---------|------|
-| `IfCondition` | if 条件 |
+| 节点类型          | 说明         |
+| ----------------- | ------------ |
+| `IfCondition`     | if 条件      |
 | `ElseIfCondition` | else if 条件 |
-| `ElseCondition` | else 条件 |
+| `ElseCondition`   | else 条件    |
 
 ---
 
@@ -219,7 +219,7 @@ class ASTNode:
 
 ### 项目结构
 
-```
+```Tree
 logstash-parser/
 ├── src/logstash_parser/
 │   ├── __init__.py       # PEG 类和解析动作
@@ -227,7 +227,7 @@ logstash-parser/
 │   ├── ast_nodes.py      # AST 节点类定义
 │   ├── schemas.py        # Pydantic Schema 定义
 │   └── py.typed          # 类型标注支持
-├── tests/                # 测试套件 (147 个测试, 84.52% 覆盖率)
+├── tests/                # 测试套件（全面覆盖）
 │   ├── conftest.py       # Pytest fixtures
 │   ├── test_parser.py    # 解析器测试
 │   ├── test_ast_nodes.py # AST 节点测试

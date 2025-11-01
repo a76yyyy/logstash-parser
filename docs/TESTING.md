@@ -15,11 +15,11 @@
 
 ## 测试结构
 
-```
+```Tree
 tests/
 ├── __init__.py              # 测试包初始化
 ├── conftest.py              # Pytest fixtures 和配置
-├── test_parser.py           # 解析器测试
+├── test_parser.py           # 解析器测试（包含 TestGrammarRuleFixes）
 ├── test_ast_nodes.py        # AST 节点测试
 ├── test_conversions.py      # 转换方法测试
 ├── test_schemas.py          # Pydantic Schema 测试
@@ -27,10 +27,11 @@ tests/
 ├── test_to_source.py        # to_source() 方法测试
 ├── test_to_logstash.py      # to_logstash() 方法测试
 ├── test_from_python.py      # from_python() 方法测试
+├── test_from_logstash.py    # from_logstash() 方法测试
 ├── test_error_handling.py   # 错误处理测试
 └── test_helpers.py          # 测试辅助工具
 
-总计: 10 个测试文件, 约 4500+ 行测试代码
+总计: 11 个测试文件
 ```
 
 ---
@@ -130,20 +131,16 @@ pytest -n 4
 
 ### 当前覆盖率
 
-- **总体覆盖率**: 91.67%
-- **核心模块覆盖率**:
-  - `__init__.py`: 100%
-  - `grammar.py`: 100%
-  - `schemas.py`: 100%
-  - `ast_nodes.py`: 88.12%
+运行 `make test-cov` 查看最新的覆盖率报告。
 
-### 覆盖率目标
+**目标覆盖率**:
 
-- **总体覆盖率**: > 90% ✅
+- **总体覆盖率**: > 90%
 - **核心模块覆盖率**: > 95%
-  - `ast_nodes.py`
-  - `schemas.py`
   - `__init__.py`
+  - `grammar.py`
+  - `schemas.py`
+  - `ast_nodes.py`
 
 ### 查看覆盖率报告
 
@@ -190,6 +187,7 @@ exclude_lines = [
 **文件**: `test_parser.py`, `test_ast_nodes.py`, `test_schemas.py`
 
 **示例**:
+
 ```python
 def test_lsstring_creation():
     """Test LSString node creation."""
@@ -205,6 +203,7 @@ def test_lsstring_creation():
 **文件**: `test_integration.py`
 
 **示例**:
+
 ```python
 @pytest.mark.integration
 def test_full_roundtrip_workflow(full_config):
@@ -222,6 +221,7 @@ def test_full_roundtrip_workflow(full_config):
 **文件**: `test_conversions.py`, `test_to_source.py`, `test_to_logstash.py`, `test_from_python.py`
 
 **覆盖**:
+
 - `to_python()` - AST → Python dict
 - `to_python(as_pydantic=True)` - AST → Pydantic Schema
 - `to_logstash()` - AST → Logstash 配置
@@ -235,6 +235,7 @@ def test_full_roundtrip_workflow(full_config):
 **文件**: `test_schemas.py`
 
 **覆盖**:
+
 - Schema 创建和验证
 - Schema 序列化/反序列化
 - Schema 类型检查
@@ -247,6 +248,7 @@ def test_full_roundtrip_workflow(full_config):
 **文件**: `test_error_handling.py`
 
 **覆盖**:
+
 - 解析错误
 - 验证错误
 - 边界情况
@@ -490,16 +492,19 @@ jobs:
 ### 测试失败
 
 1. **查看详细输出**:
+
    ```bash
    pytest -vv
    ```
 
 2. **查看完整的 traceback**:
+
    ```bash
    pytest --tb=long
    ```
 
 3. **进入调试模式**:
+
    ```bash
    pytest --pdb
    ```
@@ -507,11 +512,13 @@ jobs:
 ### 覆盖率不足
 
 1. **查看未覆盖的行**:
+
    ```bash
    pytest --cov --cov-report=term-missing
    ```
 
 2. **生成 HTML 报告**:
+
    ```bash
    pytest --cov --cov-report=html
    open htmlcov/index.html
@@ -520,11 +527,13 @@ jobs:
 ### 慢速测试
 
 1. **查看最慢的测试**:
+
    ```bash
    pytest --durations=10
    ```
 
 2. **跳过慢速测试**:
+
    ```bash
    pytest -m "not slow"
    ```
@@ -550,6 +559,7 @@ jobs:
 ### 报告问题
 
 如果发现测试问题，请提供:
+
 - 测试名称
 - 错误消息
 - 重现步骤

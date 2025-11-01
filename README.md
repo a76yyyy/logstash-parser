@@ -8,18 +8,21 @@ A Python-based Logstash pipeline configuration parser powered by [`pyparsing`](h
 
 ## Features
 
-* Parse Logstash pipeline configuration strings into a clean, traversable AST
-* Each AST node supports:
-  * `.to_python()`: Convert the subtree into Python-native data structures
-  * `.to_logstash()`: Convert the subtree back into a valid Logstash config string
-  * `.to_source()`: Get the original source text of the node (preserving formatting)
-* Support for complete Logstash syntax:
-  * Plugin configurations (input/filter/output)
-  * Conditional branches (if/else if/else)
-  * Data types (strings, numbers, booleans, arrays, hashes)
-  * Field references (selectors)
-  * Expressions (comparison, regex, logical operations)
-* Suitable for building tools that need to analyze, transform, or generate Logstash configurations
+- **100% Grammar Compliance**: Fully compliant with Logstash official grammar.treetop specification
+- **Comprehensive Testing**: Extensive test suite with high code coverage
+- Parse Logstash pipeline configuration strings into a clean, traversable AST
+- Each AST node supports:
+  - `.to_python()`: Convert the subtree into Python-native data structures (dict or Pydantic Schema)
+  - `.to_logstash()`: Convert the subtree back into a valid Logstash config string
+  - `.to_source()`: Get the original source text of the node (preserving formatting)
+- Support for complete Logstash syntax:
+  - Plugin configurations (input/filter/output)
+  - Conditional branches (if/else if/else)
+  - Data types (strings, numbers, booleans, arrays, hashes)
+  - Field references (selectors)
+  - Expressions (comparison, regex, logical operations, in/not in)
+- Pydantic Schema support for type-safe serialization/deserialization
+- Suitable for building tools that need to analyze, transform, or generate Logstash configurations
 
 ---
 
@@ -46,7 +49,6 @@ pip install -e .
 ### Basic Usage
 
 ```python
-from logstash_parser.ast_nodes import Config
 
 # Logstash configuration example
 logstash_conf = """
@@ -144,45 +146,45 @@ All AST nodes inherit from the `ASTNode` base class and provide a unified API:
 
 ### Core Nodes
 
-| Node Type | Description | Example |
-|-----------|-------------|---------|
-| `Config` | Root node containing all plugin sections | Entire configuration file |
-| `PluginSectionNode` | Plugin section (input/filter/output) | `filter { ... }` |
-| `Plugin` | Plugin definition | `grok { ... }` |
-| `Attribute` | Plugin attribute | `match => { ... }` |
-| `Branch` | Conditional branch | `if/else if/else` |
+| Node Type           | Description                              | Example                   |
+| ------------------- | ---------------------------------------- | ------------------------- |
+| `Config`            | Root node containing all plugin sections | Entire configuration file |
+| `PluginSectionNode` | Plugin section (input/filter/output)     | `filter { ... }`          |
+| `Plugin`            | Plugin definition                        | `grok { ... }`            |
+| `Attribute`         | Plugin attribute                         | `match => { ... }`        |
+| `Branch`            | Conditional branch                       | `if/else if/else`         |
 
 ### Data Type Nodes
 
-| Node Type | Description | Example |
-|-----------|-------------|---------|
-| `LSString` | String | `"message"` or `'message'` |
-| `LSBareWord` | Bare word (identifier) | `mutate`, `grok` |
-| `Number` | Number | `123`, `45.67` |
-| `Boolean` | Boolean value | `true`, `false` |
-| `Array` | Array | `[1, 2, 3]` |
-| `Hash` | Hash table | `{ "key" => "value" }` |
-| `Regexp` | Regular expression | `/pattern/` |
-| `SelectorNode` | Field reference | `[field][subfield]` |
+| Node Type      | Description            | Example                    |
+| -------------- | ---------------------- | -------------------------- |
+| `LSString`     | String                 | `"message"` or `'message'` |
+| `LSBareWord`   | Bare word (identifier) | `mutate`, `grok`           |
+| `Number`       | Number                 | `123`, `45.67`             |
+| `Boolean`      | Boolean value          | `true`, `false`            |
+| `Array`        | Array                  | `[1, 2, 3]`                |
+| `Hash`         | Hash table             | `{ "key" => "value" }`     |
+| `Regexp`       | Regular expression     | `/pattern/`                |
+| `SelectorNode` | Field reference        | `[field][subfield]`        |
 
 ### Expression Nodes
 
-| Node Type | Description | Example |
-|-----------|-------------|---------|
-| `CompareExpression` | Comparison expression | `[status] == 200` |
-| `RegexExpression` | Regex match | `[message] =~ /error/` |
-| `InExpression` | In expression | `[status] in [200, 201]` |
-| `NotInExpression` | Not in expression | `[status] not in [400, 500]` |
-| `BooleanExpression` | Boolean expression | `expr1 and expr2` |
-| `NegativeExpression` | Negation expression | `![field]` |
+| Node Type            | Description           | Example                      |
+| -------------------- | --------------------- | ---------------------------- |
+| `CompareExpression`  | Comparison expression | `[status] == 200`            |
+| `RegexExpression`    | Regex match           | `[message] =~ /error/`       |
+| `InExpression`       | In expression         | `[status] in [200, 201]`     |
+| `NotInExpression`    | Not in expression     | `[status] not in [400, 500]` |
+| `BooleanExpression`  | Boolean expression    | `expr1 and expr2`            |
+| `NegativeExpression` | Negation expression   | `![field]`                   |
 
 ### Condition Nodes
 
-| Node Type | Description |
-|-----------|-------------|
-| `IfCondition` | If condition |
+| Node Type         | Description       |
+| ----------------- | ----------------- |
+| `IfCondition`     | If condition      |
 | `ElseIfCondition` | Else if condition |
-| `ElseCondition` | Else condition |
+| `ElseCondition`   | Else condition    |
 
 ---
 
@@ -193,12 +195,11 @@ All AST nodes inherit from the `ASTNode` base class and provide a unified API:
 ```python
 class ASTNode:
     # Properties
-    children: list[ASTNode]  # List of child nodes
-    parent: ASTNode | None   # Parent node
+    children: tuple[ASTNode, ...]  # Tuple of child nodes (immutable)
 
     # Methods
-    def to_python(self) -> Any:
-        """Convert to Python native data structure"""
+    def to_python(self, as_pydantic: bool = False) -> dict | BaseModel:
+        """Convert to Python dict or Pydantic Schema"""
 
     def to_logstash(self, indent: int = 0) -> str:
         """Convert to Logstash configuration string"""
@@ -207,7 +208,11 @@ class ASTNode:
         """Get original source text (preserving formatting)"""
 
     def get_source_text(self) -> str | None:
-        """Get the original source text of the node"""
+        """Get the original source text of the node (lazy evaluation)"""
+
+    @classmethod
+    def from_python(cls, data: dict | BaseModel) -> ASTNode:
+        """Create AST from Python dict or Pydantic Schema"""
 
     def traverse(self):
         """Recursively traverse all child nodes"""
@@ -219,7 +224,7 @@ class ASTNode:
 
 ### Project Structure
 
-```
+```Tree
 logstash-parser/
 ├── src/logstash_parser/
 │   ├── __init__.py       # PEG class and parse actions
@@ -227,13 +232,14 @@ logstash-parser/
 │   ├── ast_nodes.py      # AST node class definitions
 │   ├── schemas.py        # Pydantic Schema definitions
 │   └── py.typed          # Type annotation support
-├── tests/                # Test suite (147 tests, 84.52% coverage)
+├── tests/                # Test suite (comprehensive coverage)
 │   ├── conftest.py       # Pytest fixtures
-│   ├── test_parser.py    # Parser tests
+│   ├── test_parser.py    # Parser tests (includes TestGrammarRuleFixes)
 │   ├── test_ast_nodes.py # AST node tests
 │   ├── test_conversions.py # Conversion tests
 │   ├── test_schemas.py   # Schema tests
 │   ├── test_integration.py # Integration tests
+│   ├── test_from_logstash.py # from_logstash() tests
 │   └── test_helpers.py   # Test utilities
 ├── docs/                 # Documentation
 │   ├── TESTING.md        # Testing guide

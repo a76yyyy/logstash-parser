@@ -29,7 +29,6 @@ from logstash_parser.schemas import (
     NumberSchema,
     PluginData,
     PluginSchema,
-    PluginSectionData,
     PluginSectionSchema,
     RegexExpressionData,
     RegexExpressionSchema,
@@ -144,9 +143,8 @@ class TestPluginSchemas:
     def test_plugin_section_schema(self):
         """Test PluginSectionSchema."""
         schema = PluginSectionSchema(
-            plugin_section=PluginSectionData(
-                plugin_type="input",
-                children=[
+            plugin_section={
+                "input": [
                     PluginSchema(
                         plugin=PluginData(
                             plugin_name="beats",
@@ -159,20 +157,19 @@ class TestPluginSchemas:
                             ],
                         )
                     )
-                ],
-            )
+                ]
+            }
         )
-        assert schema.plugin_section.plugin_type == "input"
-        assert len(schema.plugin_section.children) == 1
+        assert "input" in schema.plugin_section
+        assert len(schema.plugin_section["input"]) == 1
 
     def test_config_schema(self):
         """Test ConfigSchema."""
         schema = ConfigSchema(
             config=[
                 PluginSectionSchema(
-                    plugin_section=PluginSectionData(
-                        plugin_type="input",
-                        children=[
+                    plugin_section={
+                        "input": [
                             PluginSchema(
                                 plugin=PluginData(
                                     plugin_name="beats",
@@ -185,8 +182,8 @@ class TestPluginSchemas:
                                     ],
                                 )
                             )
-                        ],
-                    )
+                        ]
+                    }
                 )
             ]
         )

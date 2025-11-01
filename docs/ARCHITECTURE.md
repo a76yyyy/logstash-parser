@@ -139,6 +139,11 @@ class PluginData(BaseModel):
 class PluginSchema(BaseModel):
     plugin: PluginData  # ← 外层包装
     model_config = {"extra": "forbid"}
+
+# 使用 dict 的类型 - 更简洁
+class PluginSectionSchema(BaseModel):
+    plugin_section: dict[Literal["input", "filter", "output"], list[BranchOrPluginSchema]]
+    model_config = {"extra": "forbid"}
 ```
 
 ---

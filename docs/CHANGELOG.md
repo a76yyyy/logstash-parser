@@ -11,6 +11,13 @@
 
 ### 重构
 
+#### 简化 PluginSectionSchema 结构
+- ✅ 移除 `PluginSectionData` 类
+- ✅ `PluginSectionSchema` 直接使用 `dict[Literal["input", "filter", "output"], list[BranchOrPluginSchema]]`
+- ✅ 更简洁的 JSON 格式: `{"plugin_section": {"filter": [...]}}`
+- ✅ 类型更安全: 使用 `Literal` 限制 key 的取值
+- ✅ 与 `AttributeSchema` 的 dict 风格保持一致
+
 #### 移除 Expression 包装器节点
 - ✅ 将 `ExpressionSchema` 从类改为类型别名（Union type）
 - ✅ 移除 `Expression` AST 节点类
@@ -19,12 +26,17 @@
 - ✅ `BooleanExpression` 的 `left` 和 `right` 现在直接是具体的表达式类型
 
 #### 改进
-- ✅ 更简洁的 AST 结构
+- ✅ 更简洁的 AST 和 Schema 结构
 - ✅ 与 Schema 定义更加一致
-- ✅ 减少了多层嵌套（避免 `Expression(Expression(...))`）
-- ✅ 保持了 JSON 序列化格式的兼容性
+- ✅ 减少了不必要的嵌套层级
+- ✅ 更好的类型安全性
 
 ### 破坏性变更
+
+⚠️ **Schema 变更**:
+- 移除了 `PluginSectionData` 类
+- `PluginSectionSchema.plugin_section` 从嵌套对象改为 dict 格式
+- JSON 格式变化: `{"plugin_type": "filter", "children": [...]}` → `{"filter": [...]}`
 
 ⚠️ **API 变更**:
 - 移除了 `Expression` 类，不能再使用 `Expression(condition)` 包装表达式
@@ -34,6 +46,59 @@
 ### 迁移指南
 
 #### 从 0.3.x 迁移到 0.4.x
+
+**1. PluginSectionSchema 变更**
+
+**旧代码**:
+```python
+from logstash_parser.schemas import PluginSectionSchema, PluginSectionData
+
+schema = PluginSectionSchema(
+    plugin_section=PluginSectionData(
+        plugin_type="filter",
+        children=[...]
+    )
+)
+
+# 访问
+plugin_type = schema.plugin_section.plugin_type
+children = schema.plugin_section.children
+```
+
+**新代码**:
+```python
+from logstash_parser.schemas import PluginSectionSchema
+
+schema = PluginSectionSchema(
+    plugin_section={
+        "filter": [...]
+    }
+)
+
+# 访问
+plugin_type = next(iter(schema.plugin_section.keys()))  # "filter"
+children = schema.plugin_section[plugin_type]
+```
+
+**JSON 格式变化**:
+```python
+# 旧格式
+{
+  "plugin_section": {
+    "plugin_type": "filter",
+    "children": [...]
+  }
+}
+
+# 新格式
+{
+  "plugin_section": {
+    "filter": [...]
+  }
+}
+```
+
+**2. Expression 包装器移除**
 
 **旧代码**:
 ```python

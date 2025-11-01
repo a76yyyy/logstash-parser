@@ -61,11 +61,12 @@ def get_plugin_names(python_dict: dict[str, Any], section_type: str) -> list[str
             continue
 
         plugin_section = section["plugin_section"]
-        if plugin_section.get("plugin_type") != section_type:
+        # plugin_section is now a dict with plugin_type as key
+        if section_type not in plugin_section:
             continue
 
-        # Extract plugin names from children
-        for child in plugin_section.get("children", []):
+        # Extract plugin names from children (which is the list value)
+        for child in plugin_section[section_type]:
             if isinstance(child, dict) and "plugin" in child:
                 plugin_name = child["plugin"].get("plugin_name")
                 if plugin_name:

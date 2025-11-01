@@ -56,7 +56,6 @@ from logstash_parser.schemas import (
     NumberSchema,
     PluginData,
     PluginSchema,
-    PluginSectionData,
     PluginSectionSchema,
     RegexExpressionData,
     RegexExpressionSchema,
@@ -1424,18 +1423,17 @@ class PluginSectionNode(ASTNode[Plugin | Branch, PluginSectionSchema]):
 
     def _to_pydantic_model(self):
         return PluginSectionSchema(
-            plugin_section=PluginSectionData(
-                plugin_type=self.plugin_type,
-                children=[child._to_pydantic_model() for child in self.children],
-            )
+            plugin_section={self.plugin_type: [child._to_pydantic_model() for child in self.children]}
         )
 
     @classmethod
     def _from_pydantic(cls, schema) -> "PluginSectionNode":
         assert isinstance(schema, PluginSectionSchema)
-        # 从 schema.plugin_section.children 重建 Plugin 或 Branch
-        children = [ASTNode.from_schema(child) for child in schema.plugin_section.children]
-        node = cls(schema.plugin_section.plugin_type, children)
+        # 从 schema.plugin_section dict 重建 Plugin 或 Branch
+        # dict 应该只有一个 key-value 对
+        plugin_type, children_schemas = next(iter(schema.plugin_section.items()))
+        children = [ASTNode.from_schema(child) for child in children_schemas]
+        node = cls(plugin_type, children)
         return node
 
     def to_logstash(self, indent=0, is_dm_branch=False) -> str:

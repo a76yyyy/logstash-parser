@@ -108,8 +108,7 @@ print(json_str)
 #   "config": [
 #     {
 #       "plugin_section": {
-#         "plugin_type": "filter",
-#         "children": [...]
+#         "filter": [...]
 #       }
 #     }
 #   ]

@@ -766,17 +766,25 @@ class BranchSchema(BaseModel):
 
 ### 配置 Schema
 
-#### `PluginSectionData` / `PluginSectionSchema`
+#### `PluginSectionSchema`
 
 ```python
-class PluginSectionData(BaseModel):
-    plugin_type: str  # input, filter, output
-    children: list[BranchOrPluginSchema] = []
-    model_config = {"extra": "forbid"}
-
 class PluginSectionSchema(BaseModel):
-    plugin_section: PluginSectionData
+    plugin_section: dict[Literal["input", "filter", "output"], list[BranchOrPluginSchema]]
     model_config = {"extra": "forbid"}
+```
+
+**说明**: PluginSection 使用 dict 表示,其中 key 是 plugin_type (input/filter/output),value 是 children 列表。
+
+**示例**:
+```python
+schema = PluginSectionSchema(
+    plugin_section={
+        "filter": [
+            PluginSchema(...)
+        ]
+    }
+)
 ```
 
 #### `ConfigSchema`

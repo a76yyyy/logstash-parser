@@ -7,7 +7,7 @@ Uses snake_case keys as type discriminators (e.g., {"ls_string": {...}})
 instead of node_type field for more concise representation.
 """
 
-from typing import Annotated
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, Field, RootModel
 
@@ -301,19 +301,19 @@ class BranchSchema(ASTNodeSchema):
 # ============================================================================
 
 
-class PluginSectionData(BaseModel):
-    """Data for PluginSection node."""
-
-    plugin_type: str = Field(..., description="Section type (input/filter/output)")
-    children: list["BranchOrPluginSchema"] = Field(default_factory=list, description="Plugins or branches in section")
-
-    model_config = {"extra": "forbid"}
-
-
 class PluginSectionSchema(ASTNodeSchema):
-    """Schema for PluginSection node."""
+    """Schema for PluginSection node.
 
-    plugin_section: PluginSectionData
+    PluginSection is represented as a dict where the key is the plugin_type
+    (input/filter/output) and the value is the list of children.
+
+    Example:
+        {"plugin_section": {"filter": [...]}}
+    """
+
+    plugin_section: dict[Literal["input", "filter", "output"], list["BranchOrPluginSchema"]] = Field(
+        ..., description="Plugin section with type as key and children as value"
+    )
 
     model_config = {"extra": "forbid"}
 
@@ -386,4 +386,4 @@ NegativeExpressionData.model_rebuild()
 BooleanExpressionData.model_rebuild()
 IfConditionData.model_rebuild()
 ElseIfConditionData.model_rebuild()
-PluginSectionData.model_rebuild()
+PluginSectionSchema.model_rebuild()

@@ -49,7 +49,6 @@ from logstash_parser.schemas import (
     NumberSchema,
     PluginData,
     PluginSchema,
-    PluginSectionData,
     PluginSectionSchema,
     RegexExpressionData,
     RegexExpressionSchema,
@@ -278,9 +277,8 @@ class TestPluginNodesFromPython:
     def test_plugin_section_from_pydantic(self):
         """Test PluginSectionNode.from_python() with Pydantic schema."""
         schema = PluginSectionSchema(
-            plugin_section=PluginSectionData(
-                plugin_type="input",
-                children=[
+            plugin_section={
+                "input": [
                     PluginSchema(
                         plugin=PluginData(
                             plugin_name="file",
@@ -289,8 +287,8 @@ class TestPluginNodesFromPython:
                             ],
                         )
                     )
-                ],
-            )
+                ]
+            }
         )
         node = PluginSectionNode.from_python(schema)
         assert isinstance(node, PluginSectionNode)
@@ -301,15 +299,14 @@ class TestPluginNodesFromPython:
         """Test PluginSectionNode.from_python() with dict."""
         data = {
             "plugin_section": {
-                "plugin_type": "filter",
-                "children": [
+                "filter": [
                     {
                         "plugin": {
                             "plugin_name": "grok",
                             "attributes": [],
                         }
                     }
-                ],
+                ]
             }
         }
         node = PluginSectionNode.from_python(data)
@@ -321,17 +318,16 @@ class TestPluginNodesFromPython:
         schema = ConfigSchema(
             config=[
                 PluginSectionSchema(
-                    plugin_section=PluginSectionData(
-                        plugin_type="input",
-                        children=[
+                    plugin_section={
+                        "input": [
                             PluginSchema(
                                 plugin=PluginData(
                                     plugin_name="stdin",
                                     attributes=[],
                                 )
                             )
-                        ],
-                    )
+                        ]
+                    }
                 )
             ]
         )
@@ -345,15 +341,14 @@ class TestPluginNodesFromPython:
             "config": [
                 {
                     "plugin_section": {
-                        "plugin_type": "output",
-                        "children": [
+                        "output": [
                             {
                                 "plugin": {
                                     "plugin_name": "stdout",
                                     "attributes": [],
                                 }
                             }
-                        ],
+                        ]
                     }
                 }
             ]

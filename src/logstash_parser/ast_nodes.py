@@ -1,6 +1,7 @@
 import ast
 from typing import Any, Generic, Literal, TypeVar, cast, overload
 
+from pydantic import BaseModel
 from pyparsing import ParserElement, ParseResults
 from typing_extensions import Self
 
@@ -64,7 +65,7 @@ from logstash_parser.schemas import (
 )
 
 T = TypeVar("T", bound="ASTNode")
-S = TypeVar("S", bound="ASTNodeSchema")
+S = TypeVar("S", bound="BaseModel")  # 放宽为 BaseModel,因为 AttributeSchema 使用 RootModel
 
 
 class ASTNode(Generic[T, S]):
@@ -310,11 +311,11 @@ class ASTNode(Generic[T, S]):
     # def from_schema(cls, schema: ASTNodeSchema) -> "ASTNode": ...
 
     @classmethod
-    def from_schema(cls, schema: ASTNodeSchema) -> "ASTNode":
+    def from_schema(cls, schema: BaseModel) -> "ASTNode":
         """Convert a Pydantic Schema back to an AST Node.
 
         Args:
-            schema: Pydantic Schema object
+            schema: Pydantic Schema object (BaseModel or RootModel)
 
         Returns:
             Corresponding AST Node instance
@@ -1494,7 +1495,8 @@ class Config(ASTNode[PluginSectionNode, ConfigSchema]):
 # ============================================================================
 
 # Mapping from Schema class to AST Node class for efficient conversion
-SCHEMA_TO_NODE: dict[type[ASTNodeSchema], type[ASTNode]] = {
+# Note: Key type is BaseModel (not ASTNodeSchema) to accommodate AttributeSchema (RootModel)
+SCHEMA_TO_NODE: dict[type[BaseModel], type[ASTNode]] = {
     # Simple types
     LSStringSchema: LSString,
     LSBareWordSchema: LSBareWord,

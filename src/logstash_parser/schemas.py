@@ -7,7 +7,7 @@ Uses snake_case keys as type discriminators (e.g., {"ls_string": {...}})
 instead of node_type field for more concise representation.
 """
 
-from typing import Annotated, Literal
+from typing import Annotated, Literal, TypeAlias
 
 from pydantic import BaseModel, Field, RootModel
 
@@ -17,7 +17,13 @@ from pydantic import BaseModel, Field, RootModel
 
 
 class ASTNodeSchema(BaseModel):
-    pass
+    """Base class for all AST node schemas.
+
+    All schemas inherit from this base class and use the same model_config
+    to forbid extra fields for strict validation.
+    """
+
+    model_config = {"extra": "forbid"}
 
 
 class LSStringSchema(ASTNodeSchema):
@@ -25,15 +31,11 @@ class LSStringSchema(ASTNodeSchema):
 
     ls_string: str = Field(..., description="Raw string with quotes (lexeme)")
 
-    model_config = {"extra": "forbid"}
-
 
 class LSBareWordSchema(ASTNodeSchema):
     """Schema for LSBareWord node."""
 
     ls_bare_word: str = Field(..., description="Bare word value")
-
-    model_config = {"extra": "forbid"}
 
 
 class NumberSchema(ASTNodeSchema):
@@ -41,15 +43,11 @@ class NumberSchema(ASTNodeSchema):
 
     number: int | float = Field(..., description="Numeric value")
 
-    model_config = {"extra": "forbid"}
-
 
 class BooleanSchema(ASTNodeSchema):
     """Schema for Boolean node."""
 
     boolean: bool = Field(..., description="Boolean value")
-
-    model_config = {"extra": "forbid"}
 
 
 class RegexpSchema(ASTNodeSchema):
@@ -57,15 +55,11 @@ class RegexpSchema(ASTNodeSchema):
 
     regexp: str = Field(..., description="Raw regexp pattern (lexeme)")
 
-    model_config = {"extra": "forbid"}
-
 
 class SelectorNodeSchema(ASTNodeSchema):
     """Schema for SelectorNode."""
 
     selector_node: str = Field(..., description="Raw selector string like [foo][bar]")
-
-    model_config = {"extra": "forbid"}
 
 
 # ============================================================================
@@ -82,8 +76,6 @@ class HashSchema(ASTNodeSchema):
 
     hash: dict[str, "ValueSchema"] = Field(default_factory=dict, description="Hash entries as key-value pairs")
 
-    model_config = {"extra": "forbid"}
-
 
 class ArraySchema(ASTNodeSchema):
     """Schema for Array node."""
@@ -92,16 +84,16 @@ class ArraySchema(ASTNodeSchema):
         "PluginSchema | BooleanSchema | LSBareWordSchema | LSStringSchema | NumberSchema | ArraySchema | HashSchema"
     ] = Field(default_factory=list, description="Array elements")
 
-    model_config = {"extra": "forbid"}
 
-
-class AttributeSchema(ASTNodeSchema, RootModel[dict[str, "ValueSchema"]]):
+class AttributeSchema(RootModel[dict[str, "ValueSchema"]]):
     """Schema for Attribute node.
 
     Attribute is represented as a dict where the key is the serialized attribute name
     and the value is the corresponding value schema.
 
     Uses RootModel to serialize directly as a dict without wrapper field.
+
+    Note: RootModel does not support model_config['extra'], so we don't inherit from ASTNodeSchema.
     """
 
     root: dict[str, "ValueSchema"]
@@ -126,8 +118,6 @@ class PluginSchema(ASTNodeSchema):
 
     plugin: PluginData
 
-    model_config = {"extra": "forbid"}
-
 
 # ============================================================================
 # Expressions
@@ -149,8 +139,6 @@ class CompareExpressionSchema(ASTNodeSchema):
 
     compare_expression: CompareExpressionData
 
-    model_config = {"extra": "forbid"}
-
 
 class RegexExpressionData(BaseModel):
     """Data for RegexExpression node."""
@@ -166,8 +154,6 @@ class RegexExpressionSchema(ASTNodeSchema):
     """Schema for RegexExpression node."""
 
     regex_expression: RegexExpressionData
-
-    model_config = {"extra": "forbid"}
 
 
 class InExpressionData(BaseModel):
@@ -185,8 +171,6 @@ class InExpressionSchema(ASTNodeSchema):
 
     in_expression: InExpressionData
 
-    model_config = {"extra": "forbid"}
-
 
 class NotInExpressionData(BaseModel):
     """Data for NotInExpression node."""
@@ -203,8 +187,6 @@ class NotInExpressionSchema(ASTNodeSchema):
 
     not_in_expression: NotInExpressionData
 
-    model_config = {"extra": "forbid"}
-
 
 class NegativeExpressionData(BaseModel):
     """Data for NegativeExpression node."""
@@ -219,8 +201,6 @@ class NegativeExpressionSchema(ASTNodeSchema):
     """Schema for NegativeExpression node."""
 
     negative_expression: NegativeExpressionData
-
-    model_config = {"extra": "forbid"}
 
 
 class BooleanExpressionData(BaseModel):
@@ -237,8 +217,6 @@ class BooleanExpressionSchema(ASTNodeSchema):
     """Schema for BooleanExpression node."""
 
     boolean_expression: BooleanExpressionData
-
-    model_config = {"extra": "forbid"}
 
 
 # ============================================================================
@@ -260,8 +238,6 @@ class IfConditionSchema(ASTNodeSchema):
 
     if_condition: IfConditionData
 
-    model_config = {"extra": "forbid"}
-
 
 class ElseIfConditionData(BaseModel):
     """Data for ElseIfCondition node."""
@@ -277,23 +253,17 @@ class ElseIfConditionSchema(ASTNodeSchema):
 
     else_if_condition: ElseIfConditionData
 
-    model_config = {"extra": "forbid"}
-
 
 class ElseConditionSchema(ASTNodeSchema):
     """Schema for ElseCondition node."""
 
     else_condition: list["BranchOrPluginSchema"] = Field(default_factory=list, description="Body of else block")
 
-    model_config = {"extra": "forbid"}
-
 
 class BranchSchema(ASTNodeSchema):
     """Schema for Branch node."""
 
     branch: list["ConditionSchema"] = Field(default_factory=list, description="Branch conditions")
-
-    model_config = {"extra": "forbid"}
 
 
 # ============================================================================
@@ -315,15 +285,11 @@ class PluginSectionSchema(ASTNodeSchema):
         ..., description="Plugin section with type as key and children as value"
     )
 
-    model_config = {"extra": "forbid"}
-
 
 class ConfigSchema(ASTNodeSchema):
     """Schema for Config node (root)."""
 
     config: list[PluginSectionSchema] = Field(default_factory=list, description="Plugin sections")
-
-    model_config = {"extra": "forbid"}
 
 
 # ============================================================================
@@ -331,10 +297,10 @@ class ConfigSchema(ASTNodeSchema):
 # ============================================================================
 
 # NameSchema: LSString or LSBareWord (for attribute names)
-NameSchema = Annotated[LSStringSchema | LSBareWordSchema, Field(discriminator=None)]
+NameSchema: TypeAlias = Annotated[LSStringSchema | LSBareWordSchema, Field(discriminator=None)]
 
 # ValueSchema: All possible value types
-ValueSchema = Annotated[
+ValueSchema: TypeAlias = Annotated[
     LSStringSchema
     | LSBareWordSchema
     | NumberSchema
@@ -354,7 +320,7 @@ ValueSchema = Annotated[
 ]
 
 # ExpressionSchema: All possible expression types (union type, not a wrapper class)
-ExpressionSchema = Annotated[
+ExpressionSchema: TypeAlias = Annotated[
     CompareExpressionSchema
     | RegexExpressionSchema
     | InExpressionSchema
@@ -367,10 +333,12 @@ ExpressionSchema = Annotated[
 
 
 # ConditionSchema: If/ElseIf/Else conditions
-ConditionSchema = Annotated[IfConditionSchema | ElseIfConditionSchema | ElseConditionSchema, Field(discriminator=None)]
+ConditionSchema: TypeAlias = Annotated[
+    IfConditionSchema | ElseIfConditionSchema | ElseConditionSchema, Field(discriminator=None)
+]
 
 # BranchOrPluginSchema: Branch or Plugin
-BranchOrPluginSchema = Annotated[BranchSchema | PluginSchema, Field(discriminator=None)]
+BranchOrPluginSchema: TypeAlias = Annotated[BranchSchema | PluginSchema, Field(discriminator=None)]
 
 
 # ============================================================================

@@ -105,10 +105,18 @@ json_str = schema.model_dump_json(indent=2)
 
 print(json_str)
 # {
-#   "node_type": "Config",
-#   "children": [...]
+#   "config": [
+#     {
+#       "plugin_section": {
+#         "plugin_type": "filter",
+#         "children": [...]
+#       }
+#     }
+#   ]
 # }
 ```
+
+**注意**: JSON 使用 snake_case 字段名,结构更简洁。
 
 ### 5. 从 JSON 反序列化
 
@@ -181,7 +189,10 @@ grok_plugins = find_plugins(ast, "grok")
 ### 3. 修改 AST
 
 ```python
-from logstash_parser.ast_nodes import Plugin, Attribute, LSBareWord, Number
+from logstash_parser.ast_nodes import (
+    Plugin, Attribute, LSBareWord, LSString,
+    Hash, HashEntryNode
+)
 
 # 创建新插件
 new_plugin = Plugin(
@@ -203,6 +214,10 @@ new_plugin = Plugin(
 for section in ast.children:
     if section.plugin_type == "filter":
         section.children.append(new_plugin)
+
+# 生成更新后的配置
+updated_config = ast.to_logstash()
+print(updated_config)
 ```
 
 ### 4. 条件表达式处理
@@ -220,14 +235,20 @@ condition = CompareExpression(
     LSString('"nginx"')
 )
 
+# 直接使用表达式，无需包装
 if_branch = IfCondition(
-    Expression([condition]),
+    condition,
     [grok_plugin]
 )
 
 else_branch = ElseCondition([mutate_plugin])
 
 branch = Branch(if_branch, [], else_branch)
+
+# 添加到 filter 段
+for section in ast.children:
+    if section.plugin_type == "filter":
+        section.children.append(branch)
 ```
 
 ### 5. 验证配置
@@ -630,4 +651,5 @@ print(f"{'✅' if is_valid else '❌'} {message}")
 
 - [架构设计](./ARCHITECTURE.md)
 - [API 参考](./API_REFERENCE.md)
+- [测试指南](./TESTING.md)
 - [更新日志](./CHANGELOG.md)

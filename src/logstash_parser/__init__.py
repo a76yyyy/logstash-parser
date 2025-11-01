@@ -1,5 +1,5 @@
 # Defines the grammar for logstash conf files
-# Usage: PEG.config.parse_string(conf_text)
+# Usage: Config.from_logstash(conf_text) or parse_logstash_config(conf_text)
 from typing import cast
 
 from logstash_parser.ast_nodes import (
@@ -13,7 +13,7 @@ from logstash_parser.ast_nodes import (
     build_condition_else_node,
     build_condition_node,
     build_config_node,
-    build_expression,
+    build_expression_unwrap,
     build_hash_entry_node,
     build_hash_node,
     build_if_condition_node,
@@ -118,7 +118,7 @@ class PEG:
 
     negative_expression.set_parse_action(build_negative_expression)
 
-    expression.set_parse_action(build_expression)
+    expression.set_parse_action(build_expression_unwrap)
 
     rvalue.set_parse_action(build_rvalue)
 
@@ -147,11 +147,7 @@ def parse_logstash_config(config_text: str):
         raise ParseError("Configuration text is empty")
 
     try:
-        result = config.parse_string(config_text)
-        if not result or len(result) == 0:
-            raise ParseError("Failed to parse configuration: empty result")
-
-        config_node = cast(Config, result[0])
+        config_node = Config.from_logstash(config_text)
 
         # Check if the config has any sections (input/filter/output)
         if not config_node.children or len(config_node.children) == 0:

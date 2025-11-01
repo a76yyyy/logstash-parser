@@ -14,53 +14,53 @@ class TestToPython:
         result = ast.to_python()
 
         assert isinstance(result, dict)
-        assert "filter" in result
-        assert isinstance(result["filter"], list)
+        assert "config" in result
+        assert isinstance(result["config"], list)
 
     def test_full_config_to_python(self, full_config):
         """Test converting full config to Python dict."""
         ast = parse_logstash_config(full_config)
         result = ast.to_python()
 
-        assert "input" in result
-        assert "filter" in result
-        assert "output" in result
+        assert "config" in result
+        assert isinstance(result["config"], list)
+        assert len(result["config"]) == 3
 
     def test_conditional_to_python(self, conditional_config):
         """Test converting conditional config to Python dict."""
         ast = parse_logstash_config(conditional_config)
         result = ast.to_python()
 
-        assert "filter" in result
-        assert isinstance(result["filter"], list)
+        assert "config" in result
+        assert isinstance(result["config"], list)
 
     def test_array_to_python(self, array_hash_config):
         """Test converting arrays to Python list."""
         ast = parse_logstash_config(array_hash_config)
         result = ast.to_python()
 
-        assert "filter" in result
+        assert "config" in result
 
     def test_hash_to_python(self, array_hash_config):
         """Test converting hashes to Python dict."""
         ast = parse_logstash_config(array_hash_config)
         result = ast.to_python()
 
-        assert "filter" in result
+        assert "config" in result
 
     def test_number_to_python(self, number_boolean_config):
         """Test converting numbers to Python int/float."""
         ast = parse_logstash_config(number_boolean_config)
         result = ast.to_python()
 
-        assert "filter" in result
+        assert "config" in result
 
     def test_boolean_to_python(self, number_boolean_config):
         """Test converting booleans to Python bool."""
         ast = parse_logstash_config(number_boolean_config)
         result = ast.to_python()
 
-        assert "filter" in result
+        assert "config" in result
 
 
 class TestToLogstash:
@@ -155,7 +155,6 @@ class TestPydanticConversion:
         from logstash_parser.schemas import ConfigSchema
 
         assert isinstance(schema, ConfigSchema)
-        assert schema.node_type == "Config"
 
     def test_to_pydantic_full(self, full_config):
         """Test converting full config to Pydantic Schema."""
@@ -165,7 +164,7 @@ class TestPydanticConversion:
         from logstash_parser.schemas import ConfigSchema
 
         assert isinstance(schema, ConfigSchema)
-        assert len(schema.children) == 3
+        assert len(schema.config) == 3
 
     def test_pydantic_to_json(self, simple_filter_config):
         """Test serializing Pydantic Schema to JSON."""
@@ -174,7 +173,7 @@ class TestPydanticConversion:
 
         json_str = schema.model_dump_json()
         assert isinstance(json_str, str)
-        assert "Config" in json_str
+        assert "config" in json_str
 
     def test_json_to_pydantic(self, simple_filter_config):
         """Test deserializing JSON to Pydantic Schema."""
@@ -227,12 +226,12 @@ class TestPydanticConversion:
         from logstash_parser.schemas import LSStringSchema
 
         # Valid schema
-        schema = LSStringSchema(node_type="LSString", lexeme='"test"', value="test")
-        assert schema.value == "test"
+        schema = LSStringSchema(ls_string='"test"')
+        assert schema.ls_string == '"test"'
 
-        # Invalid schema (wrong node_type)
+        # Invalid schema (missing required field)
         with pytest.raises(ValidationError):
-            LSStringSchema(node_type="WrongType", lexeme='"test"', value="test")  # type: ignore
+            LSStringSchema()  # type: ignore
 
 
 class TestExpressionContext:
@@ -262,4 +261,4 @@ class TestExpressionContext:
         """
         ast = parse_logstash_config(config)
         result = ast.to_python()
-        assert "filter" in result
+        assert "config" in result

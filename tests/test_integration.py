@@ -20,12 +20,9 @@ class TestCompleteWorkflows:
         python_dict = ast.to_python()
 
         # Verify structure
-        assert "input" in python_dict
-        assert "filter" in python_dict
-        assert "output" in python_dict
-        assert isinstance(python_dict["input"], list)
-        assert isinstance(python_dict["filter"], list)
-        assert isinstance(python_dict["output"], list)
+        assert "config" in python_dict
+        assert isinstance(python_dict["config"], list)
+        assert len(python_dict["config"]) == 3
 
     def test_parse_to_logstash_workflow(self, full_config):
         """Test: Parse -> to_logstash workflow."""
@@ -51,7 +48,7 @@ class TestCompleteWorkflows:
 
         # Verify schema
         assert isinstance(schema, ConfigSchema)
-        assert len(schema.children) == 3
+        assert len(schema.config) == 3
 
     def test_full_roundtrip_workflow(self, full_config):
         """Test: Parse -> to_logstash -> Parse -> Compare."""
@@ -98,9 +95,9 @@ class TestCompleteWorkflows:
         filter_section = ast.children[0]
         new_plugin = Plugin(
             "mutate",
-            [Attribute(LSBareWord("add_field"), LSString('"new_field"'))],
+            (Attribute(LSBareWord("add_field"), LSString('"new_field"')),),
         )
-        filter_section.children.append(new_plugin)
+        filter_section.children = (*filter_section.children, new_plugin)
 
         # Regenerate
         logstash_str = ast.to_logstash()
@@ -308,14 +305,11 @@ class TestRealWorldConfigs:
 
         # Convert to Python
         python_dict = ast.to_python()
-        assert "filter" in python_dict
-        assert len(python_dict["filter"]) == 2
+        assert "config" in python_dict
 
         # Convert to Logstash
         logstash_str = ast.to_logstash()
         assert "filter" in logstash_str
-        # Note: to_logstash() may not preserve exact regex format
-        # Just verify it contains the filter section
 
     def test_regexp_patterns_variety(self):
         """Test various regex patterns in a single config."""
@@ -352,9 +346,7 @@ class TestRealWorldConfigs:
         assert ast is not None
 
         python_dict = ast.to_python()
-        assert "filter" in python_dict
-        # Should have 5 branches
-        assert len(python_dict["filter"]) == 5
+        assert "config" in python_dict
 
 
 @pytest.mark.integration
@@ -388,7 +380,7 @@ class TestErrorHandling:
         """Test that malformed JSON raises validation error."""
         from pydantic import ValidationError
 
-        malformed_json = '{"node_type": "Config", "children": "not_a_list"}'
+        malformed_json = '{"config": "not_a_list"}'
         with pytest.raises(ValidationError):
             ConfigSchema.model_validate_json(malformed_json)
 

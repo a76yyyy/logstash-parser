@@ -2,69 +2,70 @@
 
 This module defines Pydantic models that mirror the AST node structure,
 enabling JSON serialization/deserialization and data validation.
+
+Uses snake_case keys as type discriminators (e.g., {"ls_string": {...}})
+instead of node_type field for more concise representation.
 """
 
-from typing import Annotated, Any, Literal
+from typing import Annotated
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, RootModel
+
+# ============================================================================
+# Simple Type Schemas (using snake_case field names)
+# ============================================================================
 
 
 class ASTNodeSchema(BaseModel):
-    """Base schema for all AST nodes."""
-
-    node_type: Any = Field(..., description="Type of the AST node")
-    source_text: Annotated[str | None, Field(exclude=True, description="Original source text (not serialized)")] = None
-
-    model_config = {"extra": "forbid"}
-
-
-# ============================================================================
-# Simple Types
-# ============================================================================
+    pass
 
 
 class LSStringSchema(ASTNodeSchema):
     """Schema for LSString node."""
 
-    node_type: Literal["LSString"] = "LSString"
-    lexeme: str = Field(..., description="Raw string with quotes")
-    value: str = Field(..., description="Parsed string value")
+    ls_string: str = Field(..., description="Raw string with quotes (lexeme)")
+
+    model_config = {"extra": "forbid"}
 
 
 class LSBareWordSchema(ASTNodeSchema):
     """Schema for LSBareWord node."""
 
-    node_type: Literal["LSBareWord"] = "LSBareWord"
-    value: str = Field(..., description="Bare word value")
+    ls_bare_word: str = Field(..., description="Bare word value")
+
+    model_config = {"extra": "forbid"}
 
 
 class NumberSchema(ASTNodeSchema):
     """Schema for Number node."""
 
-    node_type: Literal["Number"] = "Number"
-    value: int | float = Field(..., description="Numeric value")
+    number: int | float = Field(..., description="Numeric value")
+
+    model_config = {"extra": "forbid"}
 
 
 class BooleanSchema(ASTNodeSchema):
     """Schema for Boolean node."""
 
-    node_type: Literal["Boolean"] = "Boolean"
-    value: bool = Field(..., description="Boolean value")
+    boolean: bool = Field(..., description="Boolean value")
+
+    model_config = {"extra": "forbid"}
 
 
 class RegexpSchema(ASTNodeSchema):
     """Schema for Regexp node."""
 
-    node_type: Literal["Regexp"] = "Regexp"
-    lexeme: str = Field(..., description="Raw regexp pattern")
-    value: str = Field(..., description="Parsed regexp value")
+    regexp: str = Field(..., description="Raw regexp pattern (lexeme)")
+
+    model_config = {"extra": "forbid"}
 
 
 class SelectorNodeSchema(ASTNodeSchema):
     """Schema for SelectorNode."""
 
-    node_type: Literal["SelectorNode"] = "SelectorNode"
-    raw: str = Field(..., description="Raw selector string like [foo][bar]")
+    selector_node: str = Field(..., description="Raw selector string like [foo][bar]")
+
+    model_config = {"extra": "forbid"}
 
 
 # ============================================================================
@@ -72,34 +73,38 @@ class SelectorNodeSchema(ASTNodeSchema):
 # ============================================================================
 
 
-class HashEntryNodeSchema(ASTNodeSchema):
-    """Schema for HashEntryNode."""
-
-    node_type: Literal["HashEntry"] = "HashEntry"
-    key: "LSStringSchema | LSBareWordSchema | NumberSchema" = Field(..., description="Hash key")
-    value: "ValueSchema" = Field(..., description="Hash value")
-
-
 class HashSchema(ASTNodeSchema):
-    """Schema for Hash node."""
+    """Schema for Hash node.
 
-    node_type: Literal["Hash"] = "Hash"
-    children: list[HashEntryNodeSchema] = Field(default_factory=list, description="Hash entries")
+    Hash is represented as a dict where keys are serialized key values
+    and values are the corresponding value schemas.
+    """
+
+    hash: dict[str, "ValueSchema"] = Field(default_factory=dict, description="Hash entries as key-value pairs")
+
+    model_config = {"extra": "forbid"}
 
 
 class ArraySchema(ASTNodeSchema):
     """Schema for Array node."""
 
-    node_type: Literal["Array"] = "Array"
-    children: list["ValueSchema"] = Field(default_factory=list, description="Array elements")
+    array: list[
+        "PluginSchema | BooleanSchema | LSBareWordSchema | LSStringSchema | NumberSchema | ArraySchema | HashSchema"
+    ] = Field(default_factory=list, description="Array elements")
+
+    model_config = {"extra": "forbid"}
 
 
-class AttributeSchema(ASTNodeSchema):
-    """Schema for Attribute node."""
+class AttributeSchema(ASTNodeSchema, RootModel[dict[str, "ValueSchema"]]):
+    """Schema for Attribute node.
 
-    node_type: Literal["Attribute"] = "Attribute"
-    name: LSStringSchema | LSBareWordSchema = Field(..., description="Attribute name")
-    value: "ValueSchema" = Field(..., description="Attribute value")
+    Attribute is represented as a dict where the key is the serialized attribute name
+    and the value is the corresponding value schema.
+
+    Uses RootModel to serialize directly as a dict without wrapper field.
+    """
+
+    root: dict[str, "ValueSchema"]
 
 
 # ============================================================================
@@ -107,12 +112,21 @@ class AttributeSchema(ASTNodeSchema):
 # ============================================================================
 
 
+class PluginData(BaseModel):
+    """Data for Plugin node."""
+
+    plugin_name: str = Field(..., description="Plugin name")
+    attributes: list[AttributeSchema] = Field(default_factory=list, description="Plugin attributes")
+
+    model_config = {"extra": "forbid"}
+
+
 class PluginSchema(ASTNodeSchema):
     """Schema for Plugin node."""
 
-    node_type: Literal["Plugin"] = "Plugin"
-    plugin_name: str = Field(..., description="Plugin name")
-    attributes: list[AttributeSchema] = Field(default_factory=list, description="Plugin attributes")
+    plugin: PluginData
+
+    model_config = {"extra": "forbid"}
 
 
 # ============================================================================
@@ -120,64 +134,111 @@ class PluginSchema(ASTNodeSchema):
 # ============================================================================
 
 
-class CompareExpressionSchema(ASTNodeSchema):
-    """Schema for CompareExpression node."""
+class CompareExpressionData(BaseModel):
+    """Data for CompareExpression node."""
 
-    node_type: Literal["CompareExpression"] = "CompareExpression"
     left: "ValueSchema" = Field(..., description="Left operand")
     operator: str = Field(..., description="Comparison operator")
     right: "ValueSchema" = Field(..., description="Right operand")
+
+    model_config = {"extra": "forbid"}
+
+
+class CompareExpressionSchema(ASTNodeSchema):
+    """Schema for CompareExpression node."""
+
+    compare_expression: CompareExpressionData
+
+    model_config = {"extra": "forbid"}
+
+
+class RegexExpressionData(BaseModel):
+    """Data for RegexExpression node."""
+
+    left: "ValueSchema" = Field(..., description="Left operand")
+    operator: str = Field(..., description="Regex operator")
+    pattern: "ValueSchema" = Field(..., description="Regex pattern")
+
+    model_config = {"extra": "forbid"}
 
 
 class RegexExpressionSchema(ASTNodeSchema):
     """Schema for RegexExpression node."""
 
-    node_type: Literal["RegexExpression"] = "RegexExpression"
-    left: "ValueSchema" = Field(..., description="Left operand")
-    operator: str = Field(..., description="Regex operator")
-    pattern: "ValueSchema" = Field(..., description="Regex pattern")
+    regex_expression: RegexExpressionData
+
+    model_config = {"extra": "forbid"}
+
+
+class InExpressionData(BaseModel):
+    """Data for InExpression node."""
+
+    value: "ValueSchema" = Field(..., description="Value to check")
+    operator: str = Field("in", description="In operator")
+    collection: "ValueSchema" = Field(..., description="Collection to check in")
+
+    model_config = {"extra": "forbid"}
 
 
 class InExpressionSchema(ASTNodeSchema):
     """Schema for InExpression node."""
 
-    node_type: Literal["InExpression"] = "InExpression"
+    in_expression: InExpressionData
+
+    model_config = {"extra": "forbid"}
+
+
+class NotInExpressionData(BaseModel):
+    """Data for NotInExpression node."""
+
     value: "ValueSchema" = Field(..., description="Value to check")
-    operator: str = Field("in", description="In operator")
+    operator: str = Field("not in", description="Not in operator")
     collection: "ValueSchema" = Field(..., description="Collection to check in")
+
+    model_config = {"extra": "forbid"}
 
 
 class NotInExpressionSchema(ASTNodeSchema):
     """Schema for NotInExpression node."""
 
-    node_type: Literal["NotInExpression"] = "NotInExpression"
-    value: "ValueSchema" = Field(..., description="Value to check")
-    operator: str = Field("not in", description="Not in operator")
-    collection: "ValueSchema" = Field(..., description="Collection to check in")
+    not_in_expression: NotInExpressionData
+
+    model_config = {"extra": "forbid"}
+
+
+class NegativeExpressionData(BaseModel):
+    """Data for NegativeExpression node."""
+
+    operator: str = Field(..., description="Negation operator")
+    expression: "ValueSchema" = Field(..., description="Expression to negate")
+
+    model_config = {"extra": "forbid"}
 
 
 class NegativeExpressionSchema(ASTNodeSchema):
     """Schema for NegativeExpression node."""
 
-    node_type: Literal["NegativeExpression"] = "NegativeExpression"
-    operator: str = Field(..., description="Negation operator")
-    expression: "ValueSchema" = Field(..., description="Expression to negate")
+    negative_expression: NegativeExpressionData
+
+    model_config = {"extra": "forbid"}
+
+
+class BooleanExpressionData(BaseModel):
+    """Data for BooleanExpression node."""
+
+    left: "ValueSchema" = Field(..., description="Left operand")
+    operator: str = Field(..., description="Boolean operator (and/or/xor/nand)")
+    right: "ValueSchema" = Field(..., description="Right operand")
+
+    model_config = {"extra": "forbid"}
 
 
 class BooleanExpressionSchema(ASTNodeSchema):
     """Schema for BooleanExpression node."""
 
-    node_type: Literal["BooleanExpression"] = "BooleanExpression"
-    left: "ValueSchema" = Field(..., description="Left operand")
-    operator: str = Field(..., description="Boolean operator (and/or/xor/nand)")
-    right: "ValueSchema" = Field(..., description="Right operand")
+    boolean_expression: BooleanExpressionData
 
-
-class ExpressionSchema(ASTNodeSchema):
-    """Schema for Expression node (wrapper)."""
-
-    node_type: Literal["Expression"] = "Expression"
-    condition: "ValueSchema" = Field(..., description="Wrapped condition")
+    model_config = {"extra": "forbid"}
 
 
 # ============================================================================
@@ -185,36 +246,54 @@ class ExpressionSchema(ASTNodeSchema):
 # ============================================================================
 
 
+class IfConditionData(BaseModel):
+    """Data for IfCondition node."""
+
+    expr: "ExpressionSchema | BooleanExpressionSchema" = Field(..., description="Condition expression")
+    body: list["BranchOrPluginSchema"] = Field(default_factory=list, description="Body of if block")
+
+    model_config = {"extra": "forbid"}
+
+
 class IfConditionSchema(ASTNodeSchema):
     """Schema for IfCondition node."""
 
-    node_type: Literal["IfCondition"] = "IfCondition"
-    expr: "ExpressionValueSchema" = Field(..., description="Condition expression")
-    body: list["BranchOrPluginSchema"] = Field(default_factory=list, description="Body of if block")
+    if_condition: IfConditionData
+
+    model_config = {"extra": "forbid"}
+
+
+class ElseIfConditionData(BaseModel):
+    """Data for ElseIfCondition node."""
+
+    expr: "ExpressionSchema | BooleanExpressionSchema" = Field(..., description="Condition expression")
+    body: list["BranchOrPluginSchema"] = Field(default_factory=list, description="Body of else if block")
+
+    model_config = {"extra": "forbid"}
 
 
 class ElseIfConditionSchema(ASTNodeSchema):
     """Schema for ElseIfCondition node."""
 
-    node_type: Literal["ElseIfCondition"] = "ElseIfCondition"
-    expr: "ExpressionValueSchema" = Field(..., description="Condition expression")
-    body: list["BranchOrPluginSchema"] = Field(default_factory=list, description="Body of else if block")
+    else_if_condition: ElseIfConditionData
+
+    model_config = {"extra": "forbid"}
 
 
 class ElseConditionSchema(ASTNodeSchema):
     """Schema for ElseCondition node."""
 
-    node_type: Literal["ElseCondition"] = "ElseCondition"
-    body: list["BranchOrPluginSchema"] = Field(default_factory=list, description="Body of else block")
+    else_condition: list["BranchOrPluginSchema"] = Field(default_factory=list, description="Body of else block")
+
+    model_config = {"extra": "forbid"}
 
 
 class BranchSchema(ASTNodeSchema):
     """Schema for Branch node."""
 
-    node_type: Literal["Branch"] = "Branch"
-    children: list[IfConditionSchema | ElseIfConditionSchema | ElseConditionSchema] = Field(
-        default_factory=list, description="Branch conditions"
-    )
+    branch: list["ConditionSchema"] = Field(default_factory=list, description="Branch conditions")
+
+    model_config = {"extra": "forbid"}
 
 
 # ============================================================================
@@ -222,24 +301,37 @@ class BranchSchema(ASTNodeSchema):
 # ============================================================================
 
 
-class PluginSectionNodeSchema(ASTNodeSchema):
-    """Schema for PluginSectionNode."""
+class PluginSectionData(BaseModel):
+    """Data for PluginSection node."""
 
-    node_type: Literal["PluginSection"] = "PluginSection"
     plugin_type: str = Field(..., description="Section type (input/filter/output)")
     children: list["BranchOrPluginSchema"] = Field(default_factory=list, description="Plugins or branches in section")
+
+    model_config = {"extra": "forbid"}
+
+
+class PluginSectionSchema(ASTNodeSchema):
+    """Schema for PluginSection node."""
+
+    plugin_section: PluginSectionData
+
+    model_config = {"extra": "forbid"}
 
 
 class ConfigSchema(ASTNodeSchema):
     """Schema for Config node (root)."""
 
-    node_type: Literal["Config"] = "Config"
-    children: list[PluginSectionNodeSchema] = Field(default_factory=list, description="Plugin sections")
+    config: list[PluginSectionSchema] = Field(default_factory=list, description="Plugin sections")
+
+    model_config = {"extra": "forbid"}
 
 
 # ============================================================================
 # Union Types
 # ============================================================================
+
+# NameSchema: LSString or LSBareWord (for attribute names)
+NameSchema = Annotated[LSStringSchema | LSBareWordSchema, Field(discriminator=None)]
 
 # ValueSchema: All possible value types
 ValueSchema = Annotated[
@@ -257,49 +349,41 @@ ValueSchema = Annotated[
     | InExpressionSchema
     | NotInExpressionSchema
     | NegativeExpressionSchema
-    | BooleanExpressionSchema
-    | ExpressionSchema,
-    Field(discriminator="node_type"),
+    | BooleanExpressionSchema,
+    Field(discriminator=None),
 ]
 
-# ExpressionValueSchema: All possible expression types
-ExpressionValueSchema = Annotated[
+# ExpressionSchema: All possible expression types (union type, not a wrapper class)
+ExpressionSchema = Annotated[
     CompareExpressionSchema
     | RegexExpressionSchema
     | InExpressionSchema
     | NotInExpressionSchema
     | NegativeExpressionSchema
     | BooleanExpressionSchema
-    | ExpressionSchema,
-    Field(discriminator="node_type"),
+    | SelectorNodeSchema,
+    Field(discriminator=None),
 ]
 
+
+# ConditionSchema: If/ElseIf/Else conditions
+ConditionSchema = Annotated[IfConditionSchema | ElseIfConditionSchema | ElseConditionSchema, Field(discriminator=None)]
+
 # BranchOrPluginSchema: Branch or Plugin
-BranchOrPluginSchema = Annotated[
-    BranchSchema | PluginSchema,
-    Field(discriminator="node_type"),
-]
+BranchOrPluginSchema = Annotated[BranchSchema | PluginSchema, Field(discriminator=None)]
 
 
 # ============================================================================
 # Rebuild models to resolve forward references
 # ============================================================================
 
-HashEntryNodeSchema.model_rebuild()
-HashSchema.model_rebuild()
-ArraySchema.model_rebuild()
-AttributeSchema.model_rebuild()
-PluginSchema.model_rebuild()
-CompareExpressionSchema.model_rebuild()
-RegexExpressionSchema.model_rebuild()
-InExpressionSchema.model_rebuild()
-NotInExpressionSchema.model_rebuild()
-NegativeExpressionSchema.model_rebuild()
-BooleanExpressionSchema.model_rebuild()
-ExpressionSchema.model_rebuild()
-IfConditionSchema.model_rebuild()
-ElseIfConditionSchema.model_rebuild()
-ElseConditionSchema.model_rebuild()
-BranchSchema.model_rebuild()
-PluginSectionNodeSchema.model_rebuild()
-ConfigSchema.model_rebuild()
+PluginData.model_rebuild()
+CompareExpressionData.model_rebuild()
+RegexExpressionData.model_rebuild()
+InExpressionData.model_rebuild()
+NotInExpressionData.model_rebuild()
+NegativeExpressionData.model_rebuild()
+BooleanExpressionData.model_rebuild()
+IfConditionData.model_rebuild()
+ElseIfConditionData.model_rebuild()
+PluginSectionData.model_rebuild()

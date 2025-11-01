@@ -17,6 +17,7 @@ parenthesis_stop = pp.Suppress(pp.Literal(")"))
 setter = pp.Suppress(pp.Literal("=>"))
 
 # Forward declarations
+hash_key = pp.Forward().set_name("hash_key")
 value = pp.Forward().set_name("value")
 rvalue = pp.Forward().set_name("rvalue")
 expression = pp.Forward().set_name("expression")
@@ -297,7 +298,8 @@ r"""
     <LogStash::Config::AST::HashEntry>
   end
 """
-hash_entry = pp.Group((number | bare_word | string) + setter + pp.Group(value))
+hash_key << (number | bare_word | string)  # type: ignore
+hash_entry = pp.Group(hash_key + setter + pp.Group(value))
 hash_entry.set_name("hash_entry")
 
 r"""

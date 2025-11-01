@@ -8,7 +8,7 @@ Logstash Parser 是一个用于解析、转换和生成 Logstash 配置的 Pytho
 
 ## 🏗️ 系统架构
 
-### 三层架构
+### 三层架构（双向转换）
 
 ```
 ┌─────────────────────────────────────────────────────────┐
@@ -17,27 +17,40 @@ Logstash Parser 是一个用于解析、转换和生成 Logstash 配置的 Pytho
 │    grok { match => { "message" => "%{PATTERN}" } }     │
 │  }                                                      │
 └─────────────────────────────────────────────────────────┘
-                          ↓ parse_logstash_config()
+         ↓ parse_logstash_config()    ↑ to_logstash()
 ┌─────────────────────────────────────────────────────────┐
 │              AST 层 (Abstract Syntax Tree)               │
 │  - 职责：解析、转换、生成                                 │
 │  - 特点：包含运行时状态                                   │
 │  - 用途：内部处理和转换                                   │
 └─────────────────────────────────────────────────────────┘
-                ↓ to_python(as_pydantic=True)
+    ↓ to_python(as_pydantic=True)    ↑ from_python()
 ┌─────────────────────────────────────────────────────────┐
 │              Schema 层 (Pydantic Models)                 │
 │  - 职责：验证、序列化、存储                               │
 │  - 特点：纯数据，无运行时状态                             │
 │  - 用途：外部交互和持久化                                 │
 └─────────────────────────────────────────────────────────┘
-                ↓ model_dump_json()
+         ↓ model_dump_json()    ↑ model_validate_json()
 ┌─────────────────────────────────────────────────────────┐
 │                    JSON 文本                             │
 │  - 可序列化、可传输                                       │
 │  - 可持久化存储                                           │
 └─────────────────────────────────────────────────────────┘
 ```
+
+**转换方法说明：**
+
+| 方向 | 方法 | 说明 |
+|------|------|------|
+| Logstash → AST | `parse_logstash_config()` | 解析配置文本为 AST |
+| AST → Logstash | `ast.to_logstash()` | 生成 Logstash 配置文本 |
+| AST → Schema | `ast.to_python(as_pydantic=True)` | 转换为 Pydantic Schema |
+| Schema → AST | `ASTNode.from_python(schema)` | 从 Schema 创建 AST |
+| Schema → JSON | `schema.model_dump_json()` | 序列化为 JSON |
+| JSON → Schema | `Schema.model_validate_json()` | 从 JSON 反序列化 |
+| AST → dict | `ast.to_python()` | 转换为 Python 字典 |
+| dict → AST | `ASTNode.from_python(dict)` | 从字典创建 AST |
 
 ---
 
@@ -61,17 +74,24 @@ Logstash Parser 是一个用于解析、转换和生成 Logstash 配置的 Pytho
 - ✅ Schema 专注于数据验证
 - ✅ 更好的可维护性
 
-### 决策 2：移除 parent 链接
+### 决策 2：移除 parent 链接 + 延迟计算 source_text
 
 **原因：**
 - 避免循环引用
 - 简化序列化
 - 大多数节点都有 `_s` 和 `_loc`，不需要向上查找
+- 延迟计算 source_text 可以提高性能
+
+**实现：**
+- 每个节点保存 `_s`（原始字符串）和 `_loc`（解析位置）
+- 每个节点类定义 `_parser_name` 和 `_parser_element`
+- `get_source_text()` 方法延迟提取并缓存结果
 
 **影响：**
 - ✅ 功能不变（大多数节点都能获取 source_text）
-- ✅ 性能提升（减少内存占用）
+- ✅ 性能提升（减少内存占用，延迟计算）
 - ✅ 序列化更简单
+- ✅ 只在需要时才提取 source_text
 
 ### 决策 3：统一的 API 设计
 
@@ -98,30 +118,84 @@ ASTNode.from_python(schema)        # 从 Schema
 **设计原则：**
 - 每个 AST 节点一个 Schema
 - 简单类型也有 Schema（LSString, Number 等）
-- 使用 Literal 确保类型准确
-- source_text 在 Schema 中保留但不序列化
+- 使用 snake_case 字段名作为类型标识
+- 复杂类型使用嵌套结构（外层 Schema + 内层 Data）
+- 不使用 `node_type` 字段,而是通过字段名识别类型
 
 **示例：**
 
 ```python
-class LSStringSchema(ASTNodeSchema):
-    node_type: Literal["LSString"] = "LSString"  # ← 类型安全
-    lexeme: str  # 原始字符串（带引号）
-    value: str   # 解析后的值
+# 简单类型 - 直接使用 snake_case 字段
+class LSStringSchema(BaseModel):
+    ls_string: str  # ← 字段名即类型标识
+    model_config = {"extra": "forbid"}
 
-class ASTNodeSchema(BaseModel):
-    source_text: str | None = Field(
-        None,
-        exclude=True,  # ← 不序列化
-        description="原始源文本"
-    )
+# 复杂类型 - 使用嵌套结构
+class PluginData(BaseModel):
+    plugin_name: str
+    attributes: list[AttributeSchema] = []
+    model_config = {"extra": "forbid"}
+
+class PluginSchema(BaseModel):
+    plugin: PluginData  # ← 外层包装
+    model_config = {"extra": "forbid"}
 ```
 
 ---
 
 ## 🔄 转换流程
 
+### 转换路径总览
+
+```
+                    parse_logstash_config()
+    Logstash Text ─────────────────────────────→ AST
+         ↑                                        │
+         │                                        │ to_python()
+         │                                        ↓
+         │                                      dict
+         │                                        │
+         │                                        │ (自动转换)
+         │                                        ↓
+         │                              to_python(as_pydantic=True)
+         │                                        │
+         │                                        ↓
+    to_logstash()                             Schema
+         │                                        │
+         │                                        │ model_dump_json()
+         │                                        ↓
+         │                                      JSON
+         │                                        │
+         │                                        │ model_validate_json()
+         │                                        ↓
+         │                                     Schema
+         │                                        │
+         │                                        │ from_python()
+         │                                        ↓
+         └────────────────────────────────────── AST
+```
+
+**关键转换点：**
+
+1. **Logstash ↔ AST**: 解析和生成
+   - `parse_logstash_config()`: 解析 Logstash 文本为 AST
+   - `ast.to_logstash()`: 从 AST 生成 Logstash 文本
+
+2. **AST ↔ dict**: 简单数据转换
+   - `ast.to_python()`: AST 转为 Python 字典
+   - `ASTNode.from_python(dict)`: 从字典创建 AST
+
+3. **AST ↔ Schema**: 类型安全转换
+   - `ast.to_python(as_pydantic=True)`: AST 转为 Schema
+   - `ASTNode.from_python(schema)`: 从 Schema 创建 AST
+
+4. **Schema ↔ JSON**: 序列化
+   - `schema.model_dump_json()`: Schema 序列化为 JSON
+   - `Schema.model_validate_json()`: JSON 反序列化为 Schema
+
 ### 完整转换链
+
+#### 正向转换（Logstash → JSON）
 
 ```
 Logstash 文本
@@ -131,12 +205,54 @@ AST 树形结构
 Pydantic Schema 对象
     ↓ model_dump_json()
 JSON 文本
+```
+
+#### 反向转换（JSON → Logstash）
+
+```
+JSON 文本
     ↓ model_validate_json()
 Pydantic Schema 对象
-    ↓ from_python() / to_ast()
+    ↓ from_python()
 AST 树形结构
     ↓ to_logstash()
 Logstash 文本
+```
+
+#### 完整往返示例
+
+```python
+from logstash_parser import parse_logstash_config
+from logstash_parser.schemas import ConfigSchema
+from logstash_parser.ast_nodes import Config
+
+# 1. Logstash → AST
+config_text = """
+filter {
+    grok {
+        match => { "message" => "%{COMBINEDAPACHELOG}" }
+    }
+}
+"""
+ast = parse_logstash_config(config_text)
+
+# 2. AST → Schema
+schema = ast.to_python(as_pydantic=True)
+
+# 3. Schema → JSON
+json_str = schema.model_dump_json(indent=2)
+
+# 4. JSON → Schema
+loaded_schema = ConfigSchema.model_validate_json(json_str)
+
+# 5. Schema → AST
+reconstructed_ast = Config.from_python(loaded_schema)
+
+# 6. AST → Logstash
+output_text = reconstructed_ast.to_logstash()
+
+# 验证往返一致性
+assert ast.to_python() == reconstructed_ast.to_python()
 ```
 
 ### 转换方法实现
@@ -178,10 +294,30 @@ class PluginSchema(ASTNodeSchema):
 logstash-parser/src/logstash_parser/
 ├── __init__.py              # 公开 API 导出
 ├── grammar.py               # 语法定义（pyparsing）
-├── ast_nodes.py             # AST 节点定义
+├── ast_nodes.py             # AST 节点定义 + 构建器函数
 ├── schemas.py               # Pydantic Schema 定义
 └── py.typed                 # 类型提示标记
 ```
+
+### 构建器函数
+
+`ast_nodes.py` 包含用于 pyparsing 的构建器函数：
+
+```python
+def build_lsstring(toks: ParseResults) -> LSString:
+    """从 ParseResults 构建 LSString 节点"""
+    value = toks.as_list()[0]
+    return LSString(value)
+
+def build_plugin_node(s, loc, toks: ParseResults) -> Plugin:
+    """从 ParseResults 构建 Plugin 节点，保存原始位置信息"""
+    return Plugin(list(toks)[0][0], list(toks)[0][1], s=s, loc=loc)
+```
+
+**特点：**
+- 构建器函数接收 `s`（原始字符串）和 `loc`（位置）参数
+- 这些参数用于延迟计算 source_text
+- 构建器函数在 `grammar.py` 中通过 `setParseAction` 注册
 
 ### 模块职责
 
@@ -224,35 +360,58 @@ logstash-parser/src/logstash_parser/
 - `BooleanExpression` / `BooleanExpressionSchema` - 布尔表达式
 - `Expression` / `ExpressionSchema` - 表达式包装器
 
-#### 4. 条件分支（4 个）
+#### 5. 条件分支（4 个）
 - `IfCondition` / `IfConditionSchema` - If 条件
 - `ElseIfCondition` / `ElseIfConditionSchema` - Else If 条件
 - `ElseCondition` / `ElseConditionSchema` - Else 条件
 - `Branch` / `BranchSchema` - 分支
 
-#### 5. 配置（2 个）
-- `PluginSectionNode` / `PluginSectionNodeSchema` - 插件段
+#### 6. 配置（2 个）
+- `PluginSectionNode` / `PluginSectionSchema` - 插件段
 - `Config` / `ConfigSchema` - 配置根节点
 
-#### 6. 特殊（1 个）
+#### 7. 特殊（1 个）
 - `RValue` - 右值包装器（无 Schema）
+
+**总计**: 24 个 AST 节点类, 20 个 Schema 类（不包括 Data 类和类型别名）
+
+**注意**: `ExpressionSchema` 是类型别名，不计入 Schema 类数量。
 
 ---
 
 ## 🔒 类型安全
 
-### Literal 类型
+### Generic 类型参数
 
-使用 Literal 确保节点类型准确：
+AST 节点使用 Generic 类型参数提供类型安全：
 
 ```python
-class PluginSchema(ASTNodeSchema):
-    node_type: Literal["Plugin"] = "Plugin"  # ← 类型检查器知道这是 "Plugin"
+T = TypeVar("T", bound="ASTNode")
+S = TypeVar("S", bound="ASTNodeSchema")
+
+class ASTNode(Generic[T, S]):
+    children: list[T]  # ← 子节点类型
+    schema_class: type[S]  # ← 对应的 Schema 类型
+```
+
+**优势：**
+- 类型检查器可以推断子节点类型
+- 每个节点类明确指定其 Schema 类型
+- 提供更好的 IDE 支持和类型提示
+
+### 字段名类型识别
+
+使用 snake_case 字段名作为类型标识：
+
+```python
+class PluginSchema(BaseModel):
+    plugin: PluginData  # ← 字段名 "plugin" 标识这是 Plugin 类型
+    model_config = {"extra": "forbid"}
 ```
 
 ### Union 类型
 
-使用 Annotated 和 discriminator 实现类型区分：
+使用 Annotated 和 `discriminator=None` 实现类型区分：
 
 ```python
 ValueSchema = Annotated[
@@ -260,9 +419,14 @@ ValueSchema = Annotated[
     | LSBareWordSchema
     | NumberSchema
     | ...,
-    Field(discriminator="node_type")  # ← 根据 node_type 区分
+    Field(discriminator=None)  # ← Pydantic 根据字段名自动识别
 ]
 ```
+
+**优势：**
+- 更简洁的 JSON 表示
+- 字段名即类型,无需额外的 `node_type` 字段
+- Pydantic 自动根据字段名进行类型识别
 
 ### Overload
 
@@ -334,4 +498,5 @@ json_str = schema.model_dump_json()
 
 - [API 参考](./API_REFERENCE.md)
 - [使用指南](./USER_GUIDE.md)
+- [测试指南](./TESTING.md)
 - [更新日志](./CHANGELOG.md)

@@ -1,4 +1,4 @@
-# Logstash Parser 测试文档
+# Logstash Parser 测试指南
 
 ## 📋 目录
 
@@ -7,6 +7,9 @@
 - [测试覆盖](#测试覆盖)
 - [测试类型](#测试类型)
 - [编写测试](#编写测试)
+- [测试最佳实践](#测试最佳实践)
+- [持续集成](#持续集成)
+- [故障排查](#故障排查)
 
 ---
 
@@ -21,8 +24,13 @@ tests/
 ├── test_conversions.py      # 转换方法测试
 ├── test_schemas.py          # Pydantic Schema 测试
 ├── test_integration.py      # 集成测试
-├── test_helpers.py          # 测试辅助工具
-└── README.md                # 本文件
+├── test_to_source.py        # to_source() 方法测试
+├── test_to_logstash.py      # to_logstash() 方法测试
+├── test_from_python.py      # from_python() 方法测试
+├── test_error_handling.py   # 错误处理测试
+└── test_helpers.py          # 测试辅助工具
+
+总计: 10 个测试文件, 约 4500+ 行测试代码
 ```
 
 ---
@@ -39,7 +47,29 @@ uv sync --group test
 pip install -e ".[test]"
 ```
 
-### 运行所有测试
+### 使用 Makefile
+
+```bash
+# 查看所有可用命令
+make help
+
+# 运行所有测试
+make test
+
+# 运行测试（详细输出）
+make test-v
+
+# 运行测试并生成覆盖率报告
+make test-cov
+
+# 快速测试（无覆盖率）
+make test-fast
+
+# 并行运行测试
+make test-parallel
+```
+
+### 直接使用 pytest
 
 ```bash
 # 基本运行
@@ -98,9 +128,18 @@ pytest -n 4
 
 ## 测试覆盖
 
-### 当前覆盖目标
+### 当前覆盖率
 
-- **总体覆盖率**: > 90%
+- **总体覆盖率**: 91.67%
+- **核心模块覆盖率**:
+  - `__init__.py`: 100%
+  - `grammar.py`: 100%
+  - `schemas.py`: 100%
+  - `ast_nodes.py`: 88.12%
+
+### 覆盖率目标
+
+- **总体覆盖率**: > 90% ✅
 - **核心模块覆盖率**: > 95%
   - `ast_nodes.py`
   - `schemas.py`
@@ -180,7 +219,7 @@ def test_full_roundtrip_workflow(full_config):
 
 测试 AST 转换方法。
 
-**文件**: `test_conversions.py`
+**文件**: `test_conversions.py`, `test_to_source.py`, `test_to_logstash.py`, `test_from_python.py`
 
 **覆盖**:
 - `to_python()` - AST → Python dict
@@ -200,6 +239,18 @@ def test_full_roundtrip_workflow(full_config):
 - Schema 序列化/反序列化
 - Schema 类型检查
 - Schema 字段验证
+
+### 5. 错误处理测试
+
+测试错误处理和边界情况。
+
+**文件**: `test_error_handling.py`
+
+**覆盖**:
+- 解析错误
+- 验证错误
+- 边界情况
+- 异常处理
 
 ---
 
@@ -515,14 +566,9 @@ jobs:
 
 ---
 
-## 更新日志
+## 相关文档
 
-### 2025-10-30
-- ✅ 创建完整的测试框架
-- ✅ 添加单元测试
-- ✅ 添加集成测试
-- ✅ 添加 Schema 测试
-- ✅ 添加转换测试
-- ✅ 添加测试辅助工具
-- ✅ 配置测试覆盖率
-- ✅ 添加测试文档
+- [架构设计](./ARCHITECTURE.md)
+- [API 参考](./API_REFERENCE.md)
+- [使用指南](./USER_GUIDE.md)
+- [更新日志](./CHANGELOG.md)

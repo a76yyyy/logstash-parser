@@ -46,8 +46,7 @@ pip install -e .
 ### 基本用法
 
 ```python
-from logstash_parser import PEG
-from logstash_parser.grammar import config
+from logstash_parser.ast_nodes import Config
 
 # Logstash 配置示例
 logstash_conf = """
@@ -61,7 +60,7 @@ filter {
 """
 
 # 解析配置
-ast = config.parse_string(logstash_conf)[0]
+ast = Config.from_logstash(logstash_conf)
 
 # 转换为 Python 字典
 python_dict = ast.to_python()
@@ -75,8 +74,7 @@ print(logstash_config)
 ### 完整示例
 
 ```python
-from logstash_parser import PEG
-from logstash_parser.grammar import config
+from logstash_parser.ast_nodes import Config
 
 # 包含多个部分的完整配置
 full_config = """
@@ -107,7 +105,7 @@ output {
 """
 
 # 解析
-ast = config.parse_string(full_config)[0]
+ast = Config.from_logstash(full_config)
 
 # 访问特定部分
 python_repr = ast.to_python()
@@ -117,7 +115,7 @@ print("Filter plugins:", python_repr.get('filter', []))
 ### 遍历 AST
 
 ```python
-from logstash_parser.grammar import config
+from logstash_parser.ast_nodes import Config
 
 logstash_conf = """
 filter {
@@ -127,7 +125,7 @@ filter {
 }
 """
 
-ast = config.parse_string(logstash_conf)[0]
+ast = Config.from_logstash(logstash_conf)
 
 # 遍历所有子节点
 for section in ast.children:

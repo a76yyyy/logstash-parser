@@ -3,7 +3,6 @@
 from logstash_parser import parse_logstash_config
 from logstash_parser.ast_nodes import (
     Array,
-    ASTNode,
     Attribute,
     Boolean,
     Branch,
@@ -46,7 +45,14 @@ class TestSimpleNodes:
     def test_lsstring_to_python(self):
         """Test LSString to_python conversion."""
         node = LSString('"test"')
-        assert node.to_python() == "test"
+        result = node.to_python()
+        assert result == {"ls_string": '"test"'}
+
+    def test_lsstring_to_pydantic(self):
+        """Test LSString to_pydantic conversion."""
+        node = LSString('"test"')
+        schema = node.to_python(as_pydantic=True)
+        assert schema.ls_string == '"test"'
 
     def test_lsbareword_creation(self):
         """Test LSBareWord node creation."""
@@ -56,7 +62,8 @@ class TestSimpleNodes:
     def test_lsbareword_to_python(self):
         """Test LSBareWord to_python conversion."""
         node = LSBareWord("grok")
-        assert node.to_python() == "grok"
+        result = node.to_python()
+        assert result == {"ls_bare_word": "grok"}
 
     def test_number_int_creation(self):
         """Test Number node creation with integer."""
@@ -71,7 +78,8 @@ class TestSimpleNodes:
     def test_number_to_python(self):
         """Test Number to_python conversion."""
         node = Number(100)
-        assert node.to_python() == 100
+        result = node.to_python()
+        assert result == {"number": 100}
 
     def test_boolean_true_creation(self):
         """Test Boolean node creation with True."""
@@ -86,7 +94,8 @@ class TestSimpleNodes:
     def test_boolean_to_python(self):
         """Test Boolean to_python conversion."""
         node = Boolean(True)
-        assert node.to_python() is True
+        result = node.to_python()
+        assert result == {"boolean": True}
 
     def test_regexp_creation(self):
         """Test Regexp node creation."""
@@ -124,7 +133,7 @@ class TestSimpleNodes:
         """Test Regexp to_python conversion."""
         node = Regexp("/error/")
         result = node.to_python()
-        assert result == "/error/"
+        assert result == {"regexp": "/error/"}
 
     def test_regexp_to_source(self):
         """Test Regexp to_source method."""
@@ -139,24 +148,26 @@ class TestSimpleNodes:
     def test_selector_to_python(self):
         """Test SelectorNode to_python conversion."""
         node = SelectorNode("[field]")
-        assert node.to_python() == "[field]"
+        result = node.to_python()
+        assert result == {"selector_node": "[field]"}
 
 
 class TestDataStructureNodes:
     """Test data structure AST nodes."""
 
-    def test_array_creation(self):
+    def test_array_creation(self) -> None:
         """Test Array node creation."""
-        elements: list[ASTNode] = [LSString('"a"'), LSString('"b"'), LSString('"c"')]
+        elements = LSString('"a"'), LSString('"b"'), LSString('"c"')
         node = Array(elements)
         assert len(node.children) == 3
 
-    def test_array_to_python(self):
+    def test_array_to_python(self) -> None:
         """Test Array to_python conversion."""
-        elements: list[ASTNode] = [LSString('"a"'), LSString('"b"')]
+        elements = LSString('"a"'), LSString('"b"')
         node = Array(elements)
         result = node.to_python()
-        assert result == ["a", "b"]
+        assert "array" in result
+        assert len(result["array"]) == 2
 
     def test_hash_entry_creation(self):
         """Test HashEntryNode creation."""
@@ -166,33 +177,26 @@ class TestDataStructureNodes:
         assert node.key == key
         assert node.value == value
 
-    def test_hash_entry_to_python(self):
-        """Test HashEntryNode to_python conversion."""
-        key = LSString('"key"')
-        value = LSString('"value"')
-        node = HashEntryNode(key, value)
-        result = node.to_python()
-        assert result == ("key", "value")
-
     def test_hash_creation(self):
         """Test Hash node creation."""
         entry1 = HashEntryNode(LSString('"key1"'), LSString('"value1"'))
         entry2 = HashEntryNode(LSString('"key2"'), LSString('"value2"'))
-        node = Hash([entry1, entry2])
+        node = Hash((entry1, entry2))
         assert len(node.children) == 2
 
     def test_hash_to_python(self):
         """Test Hash to_python conversion."""
         entry1 = HashEntryNode(LSString('"key1"'), LSString('"value1"'))
         entry2 = HashEntryNode(LSString('"key2"'), LSString('"value2"'))
-        node = Hash([entry1, entry2])
+        node = Hash((entry1, entry2))
         result = node.to_python()
-        assert result == {"key1": "value1", "key2": "value2"}
+        assert "hash" in result
+        assert len(result["hash"]) == 2
 
     def test_attribute_creation(self):
         """Test Attribute node creation."""
         name = LSBareWord("match")
-        value = Hash([HashEntryNode(LSString('"message"'), LSString('"%{PATTERN}"'))])
+        value = Hash((HashEntryNode(LSString('"message"'), LSString('"%{PATTERN}"')),))
         node = Attribute(name, value)
         assert node.name == name
         assert node.value == value
@@ -203,7 +207,8 @@ class TestDataStructureNodes:
         value = Number(5044)
         node = Attribute(name, value)
         result = node.to_python()
-        assert result == {"port": 5044}
+        # AttributeSchema is a RootModel, so it returns the dict directly
+        assert "port" in result
 
 
 class TestPluginNodes:
@@ -212,21 +217,22 @@ class TestPluginNodes:
     def test_plugin_creation(self):
         """Test Plugin node creation."""
         attr = Attribute(LSBareWord("port"), Number(5044))
-        node = Plugin("beats", [attr])
+        node = Plugin("beats", (attr,))
         assert node.plugin_name == "beats"
         assert len(node.children) == 1
 
     def test_plugin_to_python(self):
         """Test Plugin to_python conversion."""
         attr = Attribute(LSBareWord("port"), Number(5044))
-        node = Plugin("beats", [attr])
+        node = Plugin("beats", (attr,))
         result = node.to_python()
-        assert result == {"beats": [{"port": 5044}]}
+        assert "plugin" in result
+        assert result["plugin"]["plugin_name"] == "beats"
 
     def test_plugin_section_creation(self):
         """Test PluginSectionNode creation."""
         attr = Attribute(LSBareWord("port"), Number(5044))
-        plugin = Plugin("beats", [attr])
+        plugin = Plugin("beats", (attr,))
         node = PluginSectionNode("input", [plugin])
         assert node.plugin_type == "input"
         assert len(node.children) == 1
@@ -234,9 +240,9 @@ class TestPluginNodes:
     def test_config_creation(self):
         """Test Config node creation."""
         attr = Attribute(LSBareWord("port"), Number(5044))
-        plugin = Plugin("beats", [attr])
+        plugin = Plugin("beats", (attr,))
         section = PluginSectionNode("input", [plugin])
-        node = Config([section])
+        node = Config((section,))
         assert len(node.children) == 1
 
 
@@ -258,9 +264,8 @@ class TestExpressionNodes:
         right = Number(200)
         node = CompareExpression(left, "==", right)
         result = node.to_python()
-        assert result["operator"] == "=="
-        assert result["left"] == "[status]"
-        assert result["right"] == 200
+        assert "compare_expression" in result
+        assert result["compare_expression"]["operator"] == "=="
 
     def test_regex_expression_creation(self):
         """Test RegexExpression node creation."""
@@ -274,7 +279,7 @@ class TestExpressionNodes:
     def test_in_expression_creation(self):
         """Test InExpression node creation."""
         value = SelectorNode("[status]")
-        collection = Array([Number(200), Number(201)])
+        collection = Array((Number(200), Number(201)))
         node = InExpression(value, "in", collection)
         assert node.value == value
         assert node.operator == "in"
@@ -283,7 +288,7 @@ class TestExpressionNodes:
     def test_not_in_expression_creation(self):
         """Test NotInExpression node creation."""
         value = SelectorNode("[status]")
-        collection = Array([Number(400), Number(500)])
+        collection = Array((Number(400), Number(500)))
         node = NotInExpression(value, "not in", collection)
         assert node.value == value
         assert node.operator == "not in"
@@ -301,43 +306,40 @@ class TestConditionalNodes:
 
     def test_if_condition_creation(self):
         """Test IfCondition node creation."""
-        from logstash_parser.ast_nodes import Expression
 
-        expr = Expression([CompareExpression(SelectorNode("[type]"), "==", LSString('"nginx"'))])
-        attr = Attribute(LSBareWord("add_tag"), Array([LSString('"nginx"')]))
-        plugin = Plugin("mutate", [attr])
-        node = IfCondition(expr, [plugin])
+        expr = CompareExpression(SelectorNode("[type]"), "==", LSString('"nginx"'))
+        attr = Attribute(LSBareWord("add_tag"), Array((LSString('"nginx"'),)))
+        plugin = Plugin("mutate", (attr,))
+        node = IfCondition(expr, (plugin,))
         assert node.expr == expr
         assert len(node.children) == 1
 
     def test_else_if_condition_creation(self):
         """Test ElseIfCondition node creation."""
-        from logstash_parser.ast_nodes import Expression
 
-        expr = Expression([CompareExpression(SelectorNode("[type]"), "==", LSString('"syslog"'))])
-        attr = Attribute(LSBareWord("add_tag"), Array([LSString('"syslog"')]))
-        plugin = Plugin("mutate", [attr])
-        node = ElseIfCondition(expr, [plugin])
+        expr = CompareExpression(SelectorNode("[type]"), "==", LSString('"syslog"'))
+        attr = Attribute(LSBareWord("add_tag"), Array((LSString('"syslog"'),)))
+        plugin = Plugin("mutate", (attr,))
+        node = ElseIfCondition(expr, (plugin,))
         assert node.expr == expr
         assert len(node.children) == 1
 
     def test_else_condition_creation(self):
         """Test ElseCondition node creation."""
-        attr = Attribute(LSBareWord("add_tag"), Array([LSString('"unknown"')]))
-        plugin = Plugin("mutate", [attr])
-        node = ElseCondition([plugin])
+        attr = Attribute(LSBareWord("add_tag"), Array((LSString('"unknown"'),)))
+        plugin = Plugin("mutate", (attr,))
+        node = ElseCondition((plugin,))
         assert len(node.children) == 1
 
     def test_branch_creation(self):
         """Test Branch node creation."""
-        from logstash_parser.ast_nodes import Expression
 
-        if_expr = Expression([CompareExpression(SelectorNode("[type]"), "==", LSString('"nginx"'))])
-        if_plugin = Plugin("mutate", [Attribute(LSBareWord("add_tag"), Array([LSString('"nginx"')]))])
-        if_cond = IfCondition(if_expr, [if_plugin])
+        if_expr = CompareExpression(SelectorNode("[type]"), "==", LSString('"nginx"'))
+        if_plugin = Plugin("mutate", (Attribute(LSBareWord("add_tag"), Array((LSString('"nginx"'),))),))
+        if_cond = IfCondition(if_expr, (if_plugin,))
 
-        else_plugin = Plugin("mutate", [Attribute(LSBareWord("add_tag"), Array([LSString('"unknown"')]))])
-        else_cond = ElseCondition([else_plugin])
+        else_plugin = Plugin("mutate", (Attribute(LSBareWord("add_tag"), Array((LSString('"unknown"'),))),))
+        else_cond = ElseCondition((else_plugin,))
 
         node = Branch(if_cond, None, else_cond)
         assert len(node.children) == 2

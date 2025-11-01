@@ -7,22 +7,97 @@
 
 ---
 
+## [0.4.0] - 2025-11-01
+
+### 重构
+
+#### 移除 Expression 包装器节点
+- ✅ 将 `ExpressionSchema` 从类改为类型别名（Union type）
+- ✅ 移除 `Expression` AST 节点类
+- ✅ 简化 AST 结构，减少不必要的嵌套层级
+- ✅ `IfCondition` 和 `ElseIfCondition` 的 `expr` 字段现在直接使用具体的表达式类型
+- ✅ `BooleanExpression` 的 `left` 和 `right` 现在直接是具体的表达式类型
+
+#### 改进
+- ✅ 更简洁的 AST 结构
+- ✅ 与 Schema 定义更加一致
+- ✅ 减少了多层嵌套（避免 `Expression(Expression(...))`）
+- ✅ 保持了 JSON 序列化格式的兼容性
+
+### 破坏性变更
+
+⚠️ **API 变更**:
+- 移除了 `Expression` 类，不能再使用 `Expression(condition)` 包装表达式
+- `IfCondition` 和 `ElseIfCondition` 的 `expr` 参数类型从 `Expression | BooleanExpression` 改为具体的表达式类型联合
+- `BooleanExpression` 的 `left` 和 `right` 不再是 `Expression` 类型
+
+### 迁移指南
+
+#### 从 0.3.x 迁移到 0.4.x
+
+**旧代码**:
+```python
+from logstash_parser.ast_nodes import Expression, CompareExpression
+
+# 创建条件时需要包装
+condition = CompareExpression(...)
+expr = Expression(condition)  # ← 需要包装
+if_branch = IfCondition(expr, [...])
+```
+
+**新代码**:
+```python
+from logstash_parser.ast_nodes import CompareExpression
+
+# 直接使用表达式，无需包装
+condition = CompareExpression(...)
+if_branch = IfCondition(condition, [...])  # ← 直接使用
+```
+
+**Schema 使用**:
+```python
+# 旧代码
+schema = IfConditionSchema(
+    if_condition=IfConditionData(
+        expr=ExpressionSchema(  # ← 不能再这样使用
+            condition=CompareExpressionSchema(...)
+        )
+    )
+)
+
+# 新代码
+schema = IfConditionSchema(
+    if_condition=IfConditionData(
+        expr=CompareExpressionSchema(...)  # ← 直接使用具体类型
+    )
+)
+```
+
+---
+
 ## [0.3.0] - 2025-10-30
 
 ### 新增
 
 #### Pydantic Schema 支持
-- ✅ 添加完整的 Pydantic Schema 定义（24 个 Schema 类）
+- ✅ 添加完整的 Pydantic Schema 定义（21 个 Schema 类 + 9 个 Data 类）
 - ✅ 支持 AST ↔ Schema 双向转换
 - ✅ 支持 Schema ↔ JSON 序列化/反序列化
-- ✅ 使用 Literal 类型确保类型安全
-- ✅ 使用 discriminator 实现 Union 类型区分
+- ✅ 使用 snake_case 字段名作为类型标识
+- ✅ 使用 `discriminator=None` 实现自动类型识别
 
 #### 转换方法
 - ✅ `ASTNode.to_python(as_pydantic=True)` - 转换为 Pydantic Schema
 - ✅ `ASTNode.from_python(data)` - 从 dict 或 Schema 创建 AST
+- ✅ `ASTNode.from_schema(schema)` - 从 Schema 创建 AST（替代 `_schema_to_node`）
 - ✅ `Schema.model_dump_json()` - 序列化为 JSON
 - ✅ `Schema.model_validate_json()` - 从 JSON 反序列化
+
+#### 类型安全增强
+- ✅ 为 `ASTNode.from_schema()` 添加 23 个 `@overload` 类型注解
+- ✅ 支持所有 Schema 到 Node 的精确类型推断
+- ✅ IDE 可以自动推断正确的返回类型
+- ✅ 提供完整的类型安全保证
 
 #### 文档
 - ✅ 添加架构设计文档
@@ -41,6 +116,13 @@
 - ✅ `to_python()` 方法支持 `as_pydantic` 参数
 - ✅ 统一的 `from_python()` 方法支持多种输入
 - ✅ 所有 AST 节点添加 `schema_class` 属性
+- ✅ 重构 `_schema_to_node` 为 `ASTNode.from_schema` 类方法
+
+#### 代码重构
+- ✅ 将模块级函数 `_schema_to_node` 重构为类方法 `ASTNode.from_schema`
+- ✅ 更新所有内部调用点（22 处）使用新 API
+- ✅ 提高代码的面向对象设计和一致性
+- ✅ 减少全局命名空间污染
 
 ### 修复
 - ✅ 修复 source_text 缓存问题

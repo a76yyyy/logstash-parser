@@ -50,17 +50,26 @@ def get_plugin_names(python_dict: dict[str, Any], section_type: str) -> list[str
     Returns:
         List of plugin names in the section
     """
-    if section_type not in python_dict:
+    if "config" not in python_dict:
         return []
 
     plugin_names: list[str] = []
-    for item in python_dict[section_type]:
-        if isinstance(item, dict):
-            # Regular plugin
-            plugin_names.extend(item.keys())
-        elif isinstance(item, dict) and "type" in item:
-            # Branch or other special structure
+
+    # Find the section with matching plugin_type
+    for section in python_dict["config"]:
+        if not isinstance(section, dict) or "plugin_section" not in section:
             continue
+
+        plugin_section = section["plugin_section"]
+        if plugin_section.get("plugin_type") != section_type:
+            continue
+
+        # Extract plugin names from children
+        for child in plugin_section.get("children", []):
+            if isinstance(child, dict) and "plugin" in child:
+                plugin_name = child["plugin"].get("plugin_name")
+                if plugin_name:
+                    plugin_names.append(plugin_name)
 
     return plugin_names
 
@@ -75,9 +84,21 @@ def count_plugins(python_dict: dict[str, Any], section_type: str) -> int:
     Returns:
         Number of plugins in the section
     """
-    if section_type not in python_dict:
+    if "config" not in python_dict:
         return 0
-    return len(python_dict[section_type])
+
+    # Find the section with matching plugin_type
+    for section in python_dict["config"]:
+        if not isinstance(section, dict) or "plugin_section" not in section:
+            continue
+
+        plugin_section = section["plugin_section"]
+        if plugin_section.get("plugin_type") != section_type:
+            continue
+
+        return len(plugin_section.get("children", []))
+
+    return 0
 
 
 def has_conditional(python_dict: dict[str, Any], section_type: str = "filter") -> bool:
@@ -90,12 +111,21 @@ def has_conditional(python_dict: dict[str, Any], section_type: str = "filter") -
     Returns:
         True if section has conditionals
     """
-    if section_type not in python_dict:
+    if "config" not in python_dict:
         return False
 
-    for item in python_dict[section_type]:
-        if isinstance(item, dict) and "type" in item:
-            if item["type"] in ["if", "branch"]:
+    # Find the section with matching plugin_type
+    for section in python_dict["config"]:
+        if not isinstance(section, dict) or "plugin_section" not in section:
+            continue
+
+        plugin_section = section["plugin_section"]
+        if plugin_section.get("plugin_type") != section_type:
+            continue
+
+        # Check if any child is a branch
+        for child in plugin_section.get("children", []):
+            if isinstance(child, dict) and "branch" in child:
                 return True
 
     return False

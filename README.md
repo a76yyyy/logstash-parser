@@ -46,8 +46,7 @@ pip install -e .
 ### Basic Usage
 
 ```python
-from logstash_parser import PEG
-from logstash_parser.grammar import config
+from logstash_parser.ast_nodes import Config
 
 # Logstash configuration example
 logstash_conf = """
@@ -61,7 +60,7 @@ filter {
 """
 
 # Parse configuration
-ast = config.parse_string(logstash_conf)[0]
+ast = Config.from_logstash(logstash_conf)
 
 # Convert to Python dictionary
 python_dict = ast.to_python()
@@ -75,8 +74,7 @@ print(logstash_config)
 ### Complete Example
 
 ```python
-from logstash_parser import PEG
-from logstash_parser.grammar import config
+from logstash_parser.ast_nodes import Config
 
 # Full configuration with multiple sections
 full_config = """
@@ -107,7 +105,7 @@ output {
 """
 
 # Parse
-ast = config.parse_string(full_config)[0]
+ast = Config.from_logstash(full_config)
 
 # Access specific sections
 python_repr = ast.to_python()
@@ -117,7 +115,7 @@ print("Filter plugins:", python_repr.get('filter', []))
 ### Traversing the AST
 
 ```python
-from logstash_parser.grammar import config
+from logstash_parser.ast_nodes import Config
 
 logstash_conf = """
 filter {
@@ -127,7 +125,7 @@ filter {
 }
 """
 
-ast = config.parse_string(logstash_conf)[0]
+ast = Config.from_logstash(logstash_conf)
 
 # Traverse all child nodes
 for section in ast.children:

@@ -44,9 +44,20 @@ class TestParseErrors:
 
     def test_mismatched_braces_error(self):
         """Test that mismatched braces raise ParseError."""
-        # pyparsing may or may not catch this depending on the grammar
-        # Skip this test as it's grammar-dependent
-        pytest.skip("Mismatched braces handling is grammar-dependent")
+        # Test various mismatched brace scenarios
+        test_cases = [
+            ("filter { grok { }", "missing closing brace for filter section"),
+            ("filter { grok { } } }", "extra closing brace"),
+            ("filter { { grok { } }", "extra opening brace"),
+            (
+                'filter { grok { match => { "message" => "pattern" } }',
+                "incomplete nested hash - missing closing brace",
+            ),
+        ]
+
+        for config, _ in test_cases:
+            with pytest.raises(ParseError, match="Failed to parse Logstash configuration"):
+                parse_logstash_config(config)
 
     def test_config_without_sections_error(self):
         """Test that config without sections raises ParseError."""

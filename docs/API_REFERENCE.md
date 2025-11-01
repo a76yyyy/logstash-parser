@@ -862,11 +862,27 @@ class ConfigSchema(BaseModel):
 属性名类型（LSString 或 LSBareWord）：
 
 ```python
-NameSchema = Annotated[
+NameSchema: TypeAlias = Annotated[
     LSStringSchema | LSBareWordSchema,
     Field(discriminator=None)
 ]
 ```
+
+#### `RValueSchema`
+
+右值类型（用于表达式中的值）：
+
+```python
+RValueSchema: TypeAlias = Annotated[
+    LSStringSchema | NumberSchema | SelectorNodeSchema | ArraySchema | RegexpSchema,
+    # | MethodCallSchema,  # TODO: Add when MethodCall is implemented
+    Field(discriminator=None),
+]
+```
+
+**说明**：对应 Logstash 语法规则 `rule rvalue = string / number / selector / array / method_call / regexp`
+
+**注意**：`RValueSchema` 是类型别名，不是类。在 union 中会自动展开为其成员类型。
 
 #### `ValueSchema`
 
@@ -900,19 +916,23 @@ ValueSchema = Annotated[
 所有可能的表达式类型（类型别名，不是类）：
 
 ```python
-ExpressionSchema = Annotated[
+ExpressionSchema: TypeAlias = Annotated[
     CompareExpressionSchema
     | RegexExpressionSchema
     | InExpressionSchema
     | NotInExpressionSchema
     | NegativeExpressionSchema
     | BooleanExpressionSchema
-    | SelectorNodeSchema,
+    | RValueSchema,  # ← 使用 RValueSchema，会自动展开
     Field(discriminator=None)
 ]
 ```
 
-**注意**: `ExpressionSchema` 是一个类型别名，不是一个类。在使用时应该直接使用具体的表达式 Schema 类型。
+**说明**：对应 Logstash 语法规则 `rule expression = ... / rvalue`
+
+**注意**：
+- `ExpressionSchema` 是类型别名，不是类。在使用时应该直接使用具体的表达式 Schema 类型。
+- `RValueSchema` 会在 union 中自动展开为 `LSStringSchema | NumberSchema | SelectorNodeSchema | ArraySchema | RegexpSchema`
 
 #### `ConditionSchema`
 

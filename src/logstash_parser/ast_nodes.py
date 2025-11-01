@@ -1114,8 +1114,8 @@ class RValue(
         value = ASTNode.from_schema(schema)
         return cls(value)
 
-    def to_logstash(self):
-        return self.value.to_logstash()
+    def to_logstash(self, indent=0):
+        return self.value.to_logstash(indent=indent)
 
 
 class BooleanExpression(ASTNode[ASTNode, BooleanExpressionSchema]):
@@ -1180,7 +1180,11 @@ class IfCondition(ASTNode["Plugin | Branch", IfConditionSchema]):
         | NotInExpression
         | NegativeExpression
         | BooleanExpression
-        | SelectorNode,
+        | LSString
+        | Number
+        | SelectorNode
+        | Array
+        | Regexp,
         body: tuple["Plugin | Branch", ...],
         s: str | None = None,
         loc: int | None = None,
@@ -1236,7 +1240,11 @@ class ElseIfCondition(ASTNode["Plugin | Branch", ElseIfConditionSchema]):
         | NotInExpression
         | NegativeExpression
         | BooleanExpression
-        | SelectorNode,
+        | LSString
+        | Number
+        | SelectorNode
+        | Array
+        | Regexp,
         body: tuple["Plugin | Branch", ...],
         s: str | None = None,
         loc: int | None = None,
@@ -1295,7 +1303,11 @@ class ElseCondition(ASTNode["Plugin | Branch", ElseConditionSchema]):
             | NotInExpression
             | NegativeExpression
             | BooleanExpression
+            | LSString
+            | Number
             | SelectorNode
+            | Array
+            | Regexp
             | None
         ) = None
         self.children = body

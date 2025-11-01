@@ -299,6 +299,14 @@ class ConfigSchema(ASTNodeSchema):
 # NameSchema: LSString or LSBareWord (for attribute names)
 NameSchema: TypeAlias = Annotated[LSStringSchema | LSBareWordSchema, Field(discriminator=None)]
 
+# RValueSchema: All possible rvalue types (used in expressions)
+# Corresponds to: rule rvalue = string / number / selector / array / method_call / regexp
+RValueSchema: TypeAlias = Annotated[
+    LSStringSchema | NumberSchema | SelectorNodeSchema | ArraySchema | RegexpSchema,
+    # | MethodCallSchema,  # TODO: Add when MethodCall is implemented
+    Field(discriminator=None),
+]
+
 # ValueSchema: All possible value types
 ValueSchema: TypeAlias = Annotated[
     LSStringSchema
@@ -320,6 +328,8 @@ ValueSchema: TypeAlias = Annotated[
 ]
 
 # ExpressionSchema: All possible expression types (union type, not a wrapper class)
+# Corresponds to: rule expression = ... / rvalue
+# Note: RValueSchema is a TypeAlias that expands to its member types in the union
 ExpressionSchema: TypeAlias = Annotated[
     CompareExpressionSchema
     | RegexExpressionSchema
@@ -327,7 +337,7 @@ ExpressionSchema: TypeAlias = Annotated[
     | NotInExpressionSchema
     | NegativeExpressionSchema
     | BooleanExpressionSchema
-    | SelectorNodeSchema,
+    | RValueSchema,
     Field(discriminator=None),
 ]
 

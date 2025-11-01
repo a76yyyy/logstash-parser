@@ -51,6 +51,14 @@
 - ✅ 更好的类型安全性
 - ✅ 完全符合 grammar.treetop 规范
 
+#### Schema 类型定义
+
+- ✅ 添加 `RValueSchema` TypeAlias，明确表达 `rvalue` 的类型范围
+- ✅ 更新 `ExpressionSchema` 使用 `RValueSchema`（自动展开为成员类型）
+- ✅ 添加注释说明与 Logstash 语法规则的对应关系
+- ✅ 代码可维护性：如果需要修改 `rvalue` 类型，只需修改 `RValueSchema` 一处
+- ✅ 语义清晰：明确表达 `rvalue` 在 Schema 层面的类型定义
+
 ### 文档改进
 
 - ✅ 统一所有文档使用推荐的 `parse_logstash_config()` API

@@ -133,6 +133,7 @@ ASTNode.from_python(schema)        # 从 Schema
 - 使用 snake_case 字段名作为类型标识
 - 复杂类型使用嵌套结构（外层 Schema + 内层 Data）
 - 不使用 `node_type` 字段,而是通过字段名识别类型
+- 使用 TypeAlias 定义 Union 类型（如 `NameSchema`、`ValueSchema`、`ExpressionSchema`、`RValueSchema`）
 
 **示例：**
 
@@ -156,7 +157,19 @@ class PluginSchema(BaseModel):
 class PluginSectionSchema(BaseModel):
     plugin_section: dict[Literal["input", "filter", "output"], list[BranchOrPluginSchema]]
     model_config = {"extra": "forbid"}
+
+# Union 类型 - 使用 TypeAlias
+RValueSchema: TypeAlias = Annotated[
+    LSStringSchema | NumberSchema | SelectorNodeSchema | ArraySchema | RegexpSchema,
+    Field(discriminator=None),
+]
 ```
+
+**特殊节点处理：**
+
+- `RValue` 是透明包装器，序列化时直接返回内部 value 的 schema，不创建独立的 Schema 类
+- `RValueSchema` 是 TypeAlias，对应语法规则 `rule rvalue = string / number / selector / array / regexp`
+- `ExpressionSchema` 使用 `RValueSchema`，在 union 中自动展开为其成员类型
 
 ---
 

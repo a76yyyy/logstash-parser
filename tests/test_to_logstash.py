@@ -9,8 +9,10 @@ from logstash_parser.ast_nodes import (
     HashEntryNode,
     LSBareWord,
     LSString,
+    MethodCall,
     Number,
     Plugin,
+    SelectorNode,
 )
 
 
@@ -248,6 +250,57 @@ class TestToLogstashConsistency:
         assert output1 == output2
         assert "beats" in output1
         assert "port" in output1
+
+
+class TestMethodCallToLogstash:
+    """Test MethodCall.to_logstash() conversion."""
+
+    def test_method_call_to_logstash_simple(self):
+        """Test converting simple method call to Logstash."""
+        args = (LSString('"test"'),)
+        node = MethodCall("upper", args)
+
+        result = node.to_logstash()
+        assert result == 'upper("test")'
+
+    def test_method_call_to_logstash_multiple_args(self):
+        """Test converting method call with multiple args to Logstash."""
+        args = (LSString('"Hello"'), LSString('"World"'))
+        node = MethodCall("concat", args)
+
+        result = node.to_logstash()
+        assert result == 'concat("Hello", "World")'
+
+    def test_method_call_to_logstash_no_args(self):
+        """Test converting method call with no args to Logstash."""
+        node = MethodCall("now", ())
+
+        result = node.to_logstash()
+        assert result == "now()"
+
+    def test_method_call_to_logstash_with_selector(self):
+        """Test converting method call with selector to Logstash."""
+        args = (SelectorNode("[field]"),)
+        node = MethodCall("upper", args)
+
+        result = node.to_logstash()
+        assert result == "upper([field])"
+
+    def test_method_call_to_logstash_with_numbers(self):
+        """Test converting method call with numbers to Logstash."""
+        args = (Number(1), Number(2))
+        node = MethodCall("add", args)
+
+        result = node.to_logstash()
+        assert result == "add(1, 2)"
+
+    def test_nested_method_call_to_logstash(self):
+        """Test converting nested method calls to Logstash."""
+        inner = MethodCall("lower", (LSString('"TEST"'),))
+        outer = MethodCall("upper", (inner,))
+
+        result = outer.to_logstash()
+        assert result == 'upper(lower("TEST"))'
 
 
 class TestToLogstashEdgeCases:

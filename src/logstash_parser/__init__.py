@@ -20,6 +20,7 @@ from logstash_parser.ast_nodes import (
     build_in_expression,
     build_lsbw,
     build_lsstring,
+    build_method_call_node,
     build_name,
     build_negative_expression,
     build_not_in_expression,
@@ -47,6 +48,7 @@ from logstash_parser.grammar import (
     hashmap,
     if_rule,
     in_expression,
+    method_call,
     name,
     negative_expression,
     not_in_expression,
@@ -87,6 +89,8 @@ class PEG:
     not_in_expression.set_parse_action(build_not_in_expression)
 
     selector.set_parse_action(build_selector_node)
+
+    method_call.set_parse_action(build_method_call_node)
 
     bare_word.set_parse_action(build_lsbw)
 

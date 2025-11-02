@@ -12,6 +12,7 @@ from logstash_parser.ast_nodes import (
     HashEntryNode,
     LSBareWord,
     LSString,
+    MethodCall,
     Number,
     Plugin,
 )
@@ -455,6 +456,57 @@ class TestConditionalEdgeCases:
         """
         ast = parse_logstash_config(config)
         assert ast is not None
+
+
+class TestMethodCallEdgeCases:
+    """Test edge cases for MethodCall."""
+
+    def test_method_call_with_empty_string(self):
+        """Test method call with empty string argument."""
+        args = (LSString('""'),)
+        node = MethodCall("test", args)
+
+        result = node.to_logstash()
+        assert result == 'test("")'
+
+    def test_method_call_with_special_chars(self):
+        """Test method call with special characters in string."""
+        args = (LSString(r'"test\nline"'),)
+        node = MethodCall("format", args)
+
+        result = node.to_logstash()
+        assert "format" in result
+
+    def test_method_call_with_very_long_name(self):
+        """Test method call with very long method name."""
+        long_name = "very_long_method_name_with_many_characters"
+        args = (LSString('"test"'),)
+        node = MethodCall(long_name, args)
+
+        assert node.method_name == long_name
+        result = node.to_logstash()
+        assert long_name in result
+
+    def test_method_call_with_many_args(self):
+        """Test method call with many arguments."""
+        args = tuple(Number(i) for i in range(20))
+        node = MethodCall("sum", args)
+
+        assert len(node.children) == 20
+        result = node.to_logstash()
+        assert "sum" in result
+
+    def test_deeply_nested_method_calls(self):
+        """Test deeply nested method calls (5 levels)."""
+        current = MethodCall("level5", (LSString('"innermost"'),))
+
+        for i in range(4, 0, -1):
+            current = MethodCall(f"level{i}", (current,))
+
+        result = current.to_logstash()
+        assert "level1" in result
+        assert "level5" in result
+        assert "innermost" in result
 
 
 class TestCommentHandling:

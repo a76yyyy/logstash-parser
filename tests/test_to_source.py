@@ -1,5 +1,6 @@
 """Tests for to_source() method and source text reconstruction."""
 
+from logstash_parser import parse_logstash_config
 from logstash_parser.ast_nodes import (
     Array,
     Attribute,
@@ -10,6 +11,7 @@ from logstash_parser.ast_nodes import (
     HashEntryNode,
     LSBareWord,
     LSString,
+    MethodCall,
     Number,
     Plugin,
     Regexp,
@@ -421,3 +423,27 @@ class TestToSourceFallback:
         assert "beats" in source
         assert "port" in source
         assert "5044" in source
+
+    def test_method_call_to_source_fallback(self):
+        """Test method call to_source falls back to to_logstash."""
+        args = (LSString('"test"'),)
+        node = MethodCall("upper", args)
+
+        result = node.to_source()
+        assert result == 'upper("test")'
+
+    def test_method_call_to_source_from_condition(self):
+        """Test method call to_source from parsed condition."""
+        config = """filter {
+    if [x] == upper([field]) {
+        mutate { }
+    }
+}"""
+        ast = parse_logstash_config(config)
+
+        # Get the method call from condition
+        branch = ast.children[0].children[0]
+        if_cond = branch.children[0]
+        # The expression contains the method_call
+        source = if_cond.to_source()
+        assert isinstance(source, str)

@@ -62,6 +62,21 @@ class SelectorNodeSchema(ASTNodeSchema):
     selector_node: str = Field(..., description="Raw selector string like [foo][bar]")
 
 
+class MethodCallData(BaseModel):
+    """Data for MethodCall node."""
+
+    method_name: str = Field(..., description="Method name")
+    arguments: list["RValueSchema"] = Field(default_factory=list, description="Method arguments")
+
+    model_config = {"extra": "forbid"}
+
+
+class MethodCallSchema(ASTNodeSchema):
+    """Schema for MethodCall node."""
+
+    method_call: MethodCallData
+
+
 # ============================================================================
 # Data Structures
 # ============================================================================
@@ -127,9 +142,9 @@ class PluginSchema(ASTNodeSchema):
 class CompareExpressionData(BaseModel):
     """Data for CompareExpression node."""
 
-    left: "ValueSchema" = Field(..., description="Left operand")
+    left: "RValueSchema" = Field(..., description="Left operand")
     operator: str = Field(..., description="Comparison operator")
-    right: "ValueSchema" = Field(..., description="Right operand")
+    right: "RValueSchema" = Field(..., description="Right operand")
 
     model_config = {"extra": "forbid"}
 
@@ -143,9 +158,9 @@ class CompareExpressionSchema(ASTNodeSchema):
 class RegexExpressionData(BaseModel):
     """Data for RegexExpression node."""
 
-    left: "ValueSchema" = Field(..., description="Left operand")
+    left: "RValueSchema" = Field(..., description="Left operand")
     operator: str = Field(..., description="Regex operator")
-    pattern: "ValueSchema" = Field(..., description="Regex pattern")
+    pattern: LSStringSchema | RegexpSchema = Field(..., description="Regex pattern")
 
     model_config = {"extra": "forbid"}
 
@@ -159,9 +174,9 @@ class RegexExpressionSchema(ASTNodeSchema):
 class InExpressionData(BaseModel):
     """Data for InExpression node."""
 
-    value: "ValueSchema" = Field(..., description="Value to check")
+    value: "RValueSchema" = Field(..., description="Value to check")
     operator: str = Field("in", description="In operator")
-    collection: "ValueSchema" = Field(..., description="Collection to check in")
+    collection: "RValueSchema" = Field(..., description="Collection to check in")
 
     model_config = {"extra": "forbid"}
 
@@ -175,9 +190,9 @@ class InExpressionSchema(ASTNodeSchema):
 class NotInExpressionData(BaseModel):
     """Data for NotInExpression node."""
 
-    value: "ValueSchema" = Field(..., description="Value to check")
+    value: "RValueSchema" = Field(..., description="Value to check")
     operator: str = Field("not in", description="Not in operator")
-    collection: "ValueSchema" = Field(..., description="Collection to check in")
+    collection: "RValueSchema" = Field(..., description="Collection to check in")
 
     model_config = {"extra": "forbid"}
 
@@ -192,7 +207,9 @@ class NegativeExpressionData(BaseModel):
     """Data for NegativeExpression node."""
 
     operator: str = Field(..., description="Negation operator")
-    expression: "ValueSchema" = Field(..., description="Expression to negate")
+    expression: "ExpressionSchema | BooleanExpressionSchema | SelectorNodeSchema" = Field(
+        ..., description="Expression to negate"
+    )
 
     model_config = {"extra": "forbid"}
 
@@ -206,9 +223,9 @@ class NegativeExpressionSchema(ASTNodeSchema):
 class BooleanExpressionData(BaseModel):
     """Data for BooleanExpression node."""
 
-    left: "ValueSchema" = Field(..., description="Left operand")
+    left: "ExpressionSchema" = Field(..., description="Left operand")
     operator: str = Field(..., description="Boolean operator (and/or/xor/nand)")
-    right: "ValueSchema" = Field(..., description="Right operand")
+    right: "ExpressionSchema" = Field(..., description="Right operand")
 
     model_config = {"extra": "forbid"}
 
@@ -302,8 +319,7 @@ NameSchema: TypeAlias = Annotated[LSStringSchema | LSBareWordSchema, Field(discr
 # RValueSchema: All possible rvalue types (used in expressions)
 # Corresponds to: rule rvalue = string / number / selector / array / method_call / regexp
 RValueSchema: TypeAlias = Annotated[
-    LSStringSchema | NumberSchema | SelectorNodeSchema | ArraySchema | RegexpSchema,
-    # | MethodCallSchema,  # TODO: Add when MethodCall is implemented
+    LSStringSchema | NumberSchema | SelectorNodeSchema | ArraySchema | MethodCallSchema | RegexpSchema,
     Field(discriminator=None),
 ]
 
@@ -356,6 +372,7 @@ BranchOrPluginSchema: TypeAlias = Annotated[BranchSchema | PluginSchema, Field(d
 # ============================================================================
 
 PluginData.model_rebuild()
+MethodCallData.model_rebuild()
 CompareExpressionData.model_rebuild()
 RegexExpressionData.model_rebuild()
 InExpressionData.model_rebuild()

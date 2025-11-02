@@ -19,6 +19,7 @@ from logstash_parser.ast_nodes import (
     InExpression,
     LSBareWord,
     LSString,
+    MethodCall,
     NegativeExpression,
     NotInExpression,
     Number,
@@ -174,6 +175,71 @@ class TestAttributeFromLogstash:
         assert isinstance(node, Attribute)
         assert isinstance(node.name, LSBareWord)
         assert node.name.value == "match"
+
+
+class TestMethodCallFromLogstash:
+    """Test MethodCall parsing from Logstash text."""
+
+    def test_parse_method_call_simple(self):
+        """Test parsing simple method call."""
+        node = MethodCall.from_logstash('sprintf("%{field}")')
+
+        assert isinstance(node, MethodCall)
+        assert node.method_name == "sprintf"
+        assert len(node.children) == 1
+
+    def test_parse_method_call_multiple_args(self):
+        """Test parsing method call with multiple arguments."""
+        node = MethodCall.from_logstash('format("Hello %s", "World")')
+
+        assert isinstance(node, MethodCall)
+        assert node.method_name == "format"
+        assert len(node.children) == 2
+
+    def test_parse_method_call_with_selector(self):
+        """Test parsing method call with selector argument."""
+        node = MethodCall.from_logstash("upper([field])")
+
+        assert isinstance(node, MethodCall)
+        assert node.method_name == "upper"
+        assert len(node.children) == 1
+        assert isinstance(node.children[0], SelectorNode)
+
+    def test_parse_method_call_with_numbers(self):
+        """Test parsing method call with number arguments."""
+        node = MethodCall.from_logstash("add(1, 2, 3)")
+
+        assert isinstance(node, MethodCall)
+        assert node.method_name == "add"
+        assert len(node.children) == 3
+        assert all(isinstance(arg, Number) for arg in node.children)
+
+    def test_parse_method_call_with_array(self):
+        """Test parsing method call with array argument."""
+        node = MethodCall.from_logstash('join(["a", "b", "c"])')
+
+        assert isinstance(node, MethodCall)
+        assert node.method_name == "join"
+        assert len(node.children) == 1
+        assert isinstance(node.children[0], Array)
+
+    def test_parse_method_call_no_args(self):
+        """Test parsing method call with no arguments."""
+        node = MethodCall.from_logstash("now()")
+
+        assert isinstance(node, MethodCall)
+        assert node.method_name == "now"
+        assert len(node.children) == 0
+
+    def test_parse_nested_method_call(self):
+        """Test parsing nested method calls."""
+        node = MethodCall.from_logstash('upper(lower("TEST"))')
+
+        assert isinstance(node, MethodCall)
+        assert node.method_name == "upper"
+        assert len(node.children) == 1
+        assert isinstance(node.children[0], MethodCall)
+        assert node.children[0].method_name == "lower"
 
 
 class TestComplexNodesFromLogstash:

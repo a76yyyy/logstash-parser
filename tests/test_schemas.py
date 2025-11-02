@@ -22,6 +22,8 @@ from logstash_parser.schemas import (
     InExpressionSchema,
     LSBareWordSchema,
     LSStringSchema,
+    MethodCallData,
+    MethodCallSchema,
     NegativeExpressionData,
     NegativeExpressionSchema,
     NotInExpressionData,
@@ -379,6 +381,55 @@ class TestSchemaSerialization:
         json_str = '{"ls_string": "\\"test\\""}'
         schema = LSStringSchema.model_validate_json(json_str)
         assert schema.ls_string == '"test"'
+
+
+class TestMethodCallSchema:
+    """Test MethodCallSchema validation."""
+
+    def test_method_call_schema_valid(self):
+        """Test valid MethodCallSchema."""
+        schema = MethodCallSchema(
+            method_call=MethodCallData(
+                method_name="test",
+                arguments=[LSStringSchema(ls_string='"arg"')],
+            )
+        )
+
+        assert schema.method_call.method_name == "test"
+        assert len(schema.method_call.arguments) == 1
+
+    def test_method_call_schema_empty_args(self):
+        """Test MethodCallSchema with empty arguments."""
+        schema = MethodCallSchema(
+            method_call=MethodCallData(
+                method_name="now",
+                arguments=[],
+            )
+        )
+
+        assert schema.method_call.method_name == "now"
+        assert len(schema.method_call.arguments) == 0
+
+    def test_method_call_schema_validation_error(self):
+        """Test MethodCallSchema validation error."""
+        with pytest.raises(ValidationError):
+            MethodCallSchema(
+                method_call=MethodCallData(
+                    method_name="test",
+                    arguments="not_a_list",  # type: ignore
+                )
+            )
+
+    def test_method_call_schema_extra_fields_forbidden(self):
+        """Test that extra fields are forbidden in MethodCallSchema."""
+        with pytest.raises(ValidationError):
+            MethodCallSchema(
+                method_call=MethodCallData(
+                    method_name="test",
+                    arguments=[],
+                    extra_field="not_allowed",  # type: ignore
+                )
+            )
 
 
 class TestSchemaValidation:

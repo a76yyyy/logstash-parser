@@ -16,6 +16,7 @@ from logstash_parser.ast_nodes import (
     InExpression,
     LSBareWord,
     LSString,
+    MethodCall,
     NegativeExpression,
     NotInExpression,
     Number,
@@ -300,6 +301,66 @@ class TestExpressionNodes:
         assert node.operator == "!"
         assert node.expression == expr
 
+    def test_method_call_creation_with_string_args(self):
+        """Test MethodCall with string arguments."""
+        args = (LSString('"arg1"'), LSString('"arg2"'))
+        node = MethodCall("sprintf", args)
+
+        assert node.method_name == "sprintf"
+        assert len(node.children) == 2
+        assert all(isinstance(arg, LSString) for arg in node.children)
+
+    def test_method_call_creation_with_number_args(self):
+        """Test MethodCall with number arguments."""
+        args = (Number(1), Number(2), Number(3))
+        node = MethodCall("add", args)
+
+        assert node.method_name == "add"
+        assert len(node.children) == 3
+        assert all(isinstance(arg, Number) for arg in node.children)
+
+    def test_method_call_creation_with_mixed_args(self):
+        """Test MethodCall with mixed argument types."""
+        args = (
+            LSString('"format"'),
+            Number(42),
+            SelectorNode("[field]"),
+        )
+        node = MethodCall("format", args)
+
+        assert node.method_name == "format"
+        assert len(node.children) == 3
+        assert isinstance(node.children[0], LSString)
+        assert isinstance(node.children[1], Number)
+        assert isinstance(node.children[2], SelectorNode)
+
+    def test_method_call_creation_no_args(self):
+        """Test MethodCall with no arguments."""
+        node = MethodCall("now", ())
+
+        assert node.method_name == "now"
+        assert len(node.children) == 0
+
+    def test_method_call_creation_with_array_arg(self):
+        """Test MethodCall with array argument."""
+        arr = Array((LSString('"a"'), LSString('"b"')))
+        args = (arr,)
+        node = MethodCall("join", args)
+
+        assert node.method_name == "join"
+        assert len(node.children) == 1
+        assert isinstance(node.children[0], Array)
+
+    def test_method_call_creation_with_regexp_arg(self):
+        """Test MethodCall with regexp argument."""
+        pattern = Regexp("/test/")
+        args = (LSString('"text"'), pattern)
+        node = MethodCall("match", args)
+
+        assert node.method_name == "match"
+        assert len(node.children) == 2
+        assert isinstance(node.children[1], Regexp)
+
 
 class TestConditionalNodes:
     """Test conditional branch AST nodes."""
@@ -372,3 +433,29 @@ class TestNodeMethods:
         node1 = LSString('"test1"')
         node2 = LSString('"test2"')
         assert node1.uid != node2.uid
+
+    def test_method_call_repr(self):
+        """Test MethodCall __repr__."""
+        args = (LSString('"test"'),)
+        node = MethodCall("upper", args)
+
+        repr_str = repr(node)
+        assert "MethodCall" in repr_str
+        assert "upper" in repr_str
+
+    def test_method_call_to_repr(self):
+        """Test MethodCall to_repr."""
+        args = (LSString('"test"'), Number(42))
+        node = MethodCall("format", args)
+
+        repr_str = node.to_repr()
+        assert "MethodCall" in repr_str
+        assert "format" in repr_str
+
+    def test_method_call_to_repr_with_indent(self):
+        """Test MethodCall to_repr with indentation."""
+        args = (LSString('"test"'),)
+        node = MethodCall("upper", args)
+
+        repr_str = node.to_repr(indent=4)
+        assert repr_str.startswith("    ")

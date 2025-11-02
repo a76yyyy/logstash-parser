@@ -3,6 +3,8 @@
 import pytest
 
 from logstash_parser import parse_logstash_config
+from logstash_parser.ast_nodes import LSString, MethodCall, Number
+from logstash_parser.schemas import MethodCallSchema
 
 
 class TestToPython:
@@ -232,6 +234,66 @@ class TestPydanticConversion:
         # Invalid schema (missing required field)
         with pytest.raises(ValidationError):
             LSStringSchema()  # type: ignore
+
+
+class TestMethodCallRoundtrip:
+    """Test roundtrip conversions for MethodCall."""
+
+    def test_roundtrip_logstash(self):
+        """Test roundtrip: Logstash -> AST -> Logstash."""
+        original = 'sprintf("%{field}")'
+        node = MethodCall.from_logstash(original)
+        result = node.to_logstash()
+
+        # Parse again to verify
+        node2 = MethodCall.from_logstash(result)
+        assert node.method_name == node2.method_name
+        assert len(node.children) == len(node2.children)
+
+    def test_roundtrip_python(self):
+        """Test roundtrip: AST -> Python -> AST."""
+        args = (LSString('"test"'), Number(42))
+        node1 = MethodCall("format", args)
+
+        python_dict = node1.to_python()
+        node2 = MethodCall.from_python(python_dict)
+
+        assert node1.method_name == node2.method_name
+        assert len(node1.children) == len(node2.children)
+
+    def test_roundtrip_pydantic(self):
+        """Test roundtrip: AST -> Pydantic -> JSON -> Pydantic -> AST."""
+        args = (LSString('"hello"'),)
+        node1 = MethodCall("upper", args)
+
+        # AST -> Pydantic
+        schema1 = node1.to_python(as_pydantic=True)
+
+        # Pydantic -> JSON
+        json_str = schema1.model_dump_json()
+
+        # JSON -> Pydantic
+        schema2 = MethodCallSchema.model_validate_json(json_str)
+
+        # Pydantic -> AST
+        node2 = MethodCall.from_python(schema2)
+
+        assert node1.method_name == node2.method_name
+        assert len(node1.children) == len(node2.children)
+
+    def test_roundtrip_in_config(self):
+        """Test roundtrip with method call in config."""
+        config = """filter {
+    if [result] == sprintf("%{field}") {
+        mutate { }
+    }
+}"""
+
+        ast1 = parse_logstash_config(config)
+        logstash_str = ast1.to_logstash()
+        ast2 = parse_logstash_config(logstash_str)
+
+        assert ast1.to_python() == ast2.to_python()
 
 
 class TestExpressionContext:

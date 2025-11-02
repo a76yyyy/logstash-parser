@@ -54,8 +54,9 @@ r"""
     (whitespace? "#" [^\r\n]* "\r"? "\n")+ <LogStash::Config::AST::Comment>
   end
 """
-comment_regex_str = r"#.*"
-comment = pp.Regex(compile(comment_regex_str))
+# Comment: # at start of line (with optional leading spaces/tabs), followed by anything except newline
+# Simplified: just match the pattern directly without complex newline_or_eoi handling
+comment = pp.Regex(r"[ \t]*#[^\r\n]*(?:\r?\n|$)")
 comment.set_name("comment")
 
 r"""
@@ -286,9 +287,9 @@ r"""
     "["
     cs
     (
-      value (_ "," _ value)*
+      value (cs "," cs value)*
     )?
-    _
+    cs
     "]"
     <LogStash::Config::AST::Array>
   end
@@ -517,6 +518,7 @@ bare_word_with_source = pp.originalTextFor(bare_word.copy())
 boolean_with_source = pp.originalTextFor(boolean.copy())
 selector_with_source = pp.originalTextFor(selector.copy())
 regexp_with_source = pp.originalTextFor(regexp.copy())
+method_call_with_source = pp.originalTextFor(method_call.copy())
 rvalue_with_source = pp.originalTextFor(rvalue.copy())
 # Expression elements
 regexp_expression_with_source = pp.originalTextFor(regexp_expression.copy())

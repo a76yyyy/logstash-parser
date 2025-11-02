@@ -19,6 +19,7 @@ from logstash_parser.grammar import (
     hashmap,
     if_rule,
     in_expression,
+    method_call,
     negative_expression,
     not_in_expression,
     number,
@@ -50,6 +51,8 @@ from logstash_parser.schemas import (
     InExpressionSchema,
     LSBareWordSchema,
     LSStringSchema,
+    MethodCallData,
+    MethodCallSchema,
     NegativeExpressionData,
     NegativeExpressionSchema,
     NotInExpressionData,
@@ -235,6 +238,10 @@ class ASTNode(Generic[T, S]):
     @overload
     @classmethod
     def from_schema(cls, schema: SelectorNodeSchema) -> "SelectorNode": ...
+
+    @overload
+    @classmethod
+    def from_schema(cls, schema: MethodCallSchema) -> "MethodCall": ...
 
     # Data structures
     @overload
@@ -922,16 +929,89 @@ class SelectorNode(ASTNode[ASTNode, SelectorNodeSchema]):
         return str(self.raw)
 
 
-class RegexExpression(ASTNode[ASTNode, RegexExpressionSchema]):
+class MethodCall(ASTNode["LSString | Number | SelectorNode | Array | MethodCall | Regexp", MethodCallSchema]):
+    """
+    Represents a method call like sprintf("%{field}", arg1, arg2)
+    """
+
+    schema_class = MethodCallSchema
+    _parser_name = "method_call"
+    _parser_element_for_parsing = method_call
+    _parser_element_for_get_source = grammar.method_call_with_source
+
+    def __init__(
+        self,
+        method_name: str | LSBareWord,
+        arguments: tuple["LSString | Number | SelectorNode | Array | MethodCall | Regexp | RValue", ...],
+        s: str | None = None,
+        loc: int | None = None,
+    ):
+        super().__init__(s=s, loc=loc)
+        self.method_name: str = method_name if isinstance(method_name, str) else method_name.value
+        # Unwrap RValue objects to get the actual values
+        self.children = tuple(arg.value if isinstance(arg, RValue) else arg for arg in arguments)
+
+    def __repr__(self):
+        args_repr = ", ".join(str(arg) for arg in self.children)
+        return f"MethodCall({self.method_name}({args_repr}))"
+
+    def to_repr(self, indent: int = 0) -> str:
+        ind = " " * indent
+        args_repr = ", ".join(arg.to_repr(0) for arg in self.children)
+        return f"{ind}MethodCall({self.method_name}({args_repr}))"
+
+    def _to_pydantic_model(self):
+        return MethodCallSchema(
+            method_call=MethodCallData(
+                method_name=self.method_name,
+                arguments=[child._to_pydantic_model() for child in self.children],
+            )
+        )
+
+    @classmethod
+    def _from_pydantic(cls, schema) -> "MethodCall":
+        assert isinstance(schema, MethodCallSchema)
+        arguments = tuple(ASTNode.from_schema(arg) for arg in schema.method_call.arguments)
+        node = cls(schema.method_call.method_name, arguments)
+        return node
+
+    def to_logstash(self, indent: int = 0, **kwargs) -> str:
+        args_parts: list[str] = []
+        for arg in self.children:
+            if isinstance(arg, ASTNode):
+                result = arg.to_logstash(**kwargs)
+                args_parts.append(str(result) if not isinstance(result, str) else result)
+            else:
+                args_parts.append(str(arg))
+        return f"{self.method_name}({', '.join(args_parts)})"
+
+    def to_source(self) -> str:
+        # Try to get cached source text first
+        source_text = self.get_source_text()
+        if source_text is not None:
+            return source_text
+
+        # Fallback to reconstruction
+        return self.to_logstash()
+
+
+class RegexExpression(ASTNode[LSString | Number | SelectorNode | Array | MethodCall | Regexp, RegexExpressionSchema]):
     schema_class = RegexExpressionSchema
     _parser_name = "regexp_expression"
     _parser_element_for_get_source = grammar.regexp_expression_with_source
     _parser_element_for_parsing = regexp_expression
 
-    def __init__(self, left: ASTNode, operator: str, pattern: ASTNode, s: str | None = None, loc: int | None = None):
+    def __init__(
+        self,
+        left: LSString | Number | SelectorNode | Array | MethodCall | Regexp,
+        operator: str,
+        pattern: LSString | Regexp,
+        s: str | None = None,
+        loc: int | None = None,
+    ):
         super().__init__(s=s, loc=loc)
 
-        self.left: ASTNode = left
+        self.left = left
         self.operator: str = operator
         self.pattern: ASTNode = pattern
 
@@ -960,17 +1040,26 @@ class RegexExpression(ASTNode[ASTNode, RegexExpressionSchema]):
         return f"{self.left.to_logstash(**kwargs)} {self.operator} {self.pattern.to_logstash(**kwargs)}"
 
 
-class CompareExpression(ASTNode[ASTNode, CompareExpressionSchema]):
+class CompareExpression(
+    ASTNode[LSString | Number | SelectorNode | Array | MethodCall | Regexp, CompareExpressionSchema]
+):
     schema_class = CompareExpressionSchema
     _parser_name = "compare_expression"
     _parser_element_for_get_source = grammar.compare_expression_with_source
     _parser_element_for_parsing = compare_expression
 
-    def __init__(self, left: ASTNode, operator: str, right: ASTNode, s: str | None = None, loc: int | None = None):
+    def __init__(
+        self,
+        left: LSString | Number | SelectorNode | Array | MethodCall | Regexp,
+        operator: str,
+        right: LSString | Number | SelectorNode | Array | MethodCall | Regexp,
+        s: str | None = None,
+        loc: int | None = None,
+    ):
         super().__init__(s=s, loc=loc)
-        self.left: ASTNode = left
+        self.left = left
         self.operator: str = operator
-        self.right: ASTNode = right
+        self.right = right
         self.children = (left, right)
 
         self.set_expression_context(True)  # Mark sub-nodes as expression context
@@ -999,13 +1088,20 @@ class CompareExpression(ASTNode[ASTNode, CompareExpressionSchema]):
         return f"{self.left.to_logstash(**kwargs)} {self.operator} {self.right.to_logstash(**kwargs)}"
 
 
-class InExpression(ASTNode[ASTNode, InExpressionSchema]):
+class InExpression(ASTNode[LSString | Number | SelectorNode | Array | MethodCall | Regexp, InExpressionSchema]):
     schema_class = InExpressionSchema
     _parser_name = "in_expression"
     _parser_element_for_get_source = grammar.in_expression_with_source
     _parser_element_for_parsing = in_expression
 
-    def __init__(self, value, operator, collection, s: str | None = None, loc: int | None = None):
+    def __init__(
+        self,
+        value: LSString | Number | SelectorNode | Array | MethodCall | Regexp,
+        operator,
+        collection: LSString | Number | SelectorNode | Array | MethodCall | Regexp,
+        s: str | None = None,
+        loc: int | None = None,
+    ):
         super().__init__(s=s, loc=loc)
         self.value = value
         self.operator = operator
@@ -1038,13 +1134,20 @@ class InExpression(ASTNode[ASTNode, InExpressionSchema]):
         return f"{self.value.to_logstash(**kwargs)} {self.operator} {self.collection.to_logstash(**kwargs)}"
 
 
-class NotInExpression(ASTNode[ASTNode, NotInExpressionSchema]):
+class NotInExpression(ASTNode[LSString | Number | SelectorNode | Array | MethodCall | Regexp, NotInExpressionSchema]):
     schema_class = NotInExpressionSchema
     _parser_name = "not_in_expression"
     _parser_element_for_get_source = grammar.not_in_expression_with_source
     _parser_element_for_parsing = not_in_expression
 
-    def __init__(self, value, operator, collection, s: str | None = None, loc: int | None = None):
+    def __init__(
+        self,
+        value: LSString | Number | SelectorNode | Array | MethodCall | Regexp,
+        operator,
+        collection: LSString | Number | SelectorNode | Array | MethodCall | Regexp,
+        s: str | None = None,
+        loc: int | None = None,
+    ):
         super().__init__(s=s, loc=loc)
         self.value = value
         self.operator = operator
@@ -1077,13 +1180,24 @@ class NotInExpression(ASTNode[ASTNode, NotInExpressionSchema]):
         return node
 
 
-class NegativeExpression(ASTNode[ASTNode, NegativeExpressionSchema]):
+class NegativeExpression(
+    ASTNode[
+        "CompareExpression | RegexExpression | InExpression | NotInExpression | NegativeExpression | BooleanExpression | LSString | Number | SelectorNode | Array | MethodCall | Regexp ",  # noqa: E501
+        NegativeExpressionSchema,
+    ]
+):
     schema_class = NegativeExpressionSchema
     _parser_name = "negative_expression"
     _parser_element_for_get_source = grammar.negative_expression_with_source
     _parser_element_for_parsing = negative_expression
 
-    def __init__(self, operator, expression, s: str | None = None, loc: int | None = None):
+    def __init__(
+        self,
+        operator,
+        expression: "CompareExpression | RegexExpression | InExpression | NotInExpression | NegativeExpression | BooleanExpression | LSString | Number | SelectorNode | Array | MethodCall | Regexp",  # noqa: E501
+        s: str | None = None,
+        loc: int | None = None,
+    ):
         super().__init__(s=s, loc=loc)
         self.operator = operator
         self.expression = expression
@@ -1131,15 +1245,15 @@ class NegativeExpression(ASTNode[ASTNode, NegativeExpressionSchema]):
 
 class RValue(
     ASTNode[
-        LSString | Number | SelectorNode | Array | Regexp,
-        LSStringSchema | NumberSchema | SelectorNodeSchema | ArraySchema | RegexpSchema,
+        LSString | Number | SelectorNode | Array | MethodCall | Regexp,
+        LSStringSchema | NumberSchema | SelectorNodeSchema | ArraySchema | MethodCallSchema | RegexpSchema,
     ]
 ):
     _parser_name = "rvalue"
     _parser_element_for_get_source = grammar.rvalue_with_source
     _parser_element_for_parsing = grammar.rvalue
 
-    def __init__(self, value: LSString | Number | SelectorNode | Array | Regexp):
+    def __init__(self, value: LSString | Number | SelectorNode | Array | MethodCall | Regexp):
         super().__init__()
         self.value = value
         self.children = (value,) if isinstance(value, ASTNode) else ()
@@ -1171,13 +1285,24 @@ PRECEDENCE = {
 }
 
 
-class BooleanExpression(ASTNode[ASTNode, BooleanExpressionSchema]):
+class BooleanExpression(
+    ASTNode[
+        "CompareExpression | RegexExpression | InExpression | NotInExpression | NegativeExpression | BooleanExpression | LSString | Number | SelectorNode | Array | MethodCall | Regexp",  # noqa: E501
+        BooleanExpressionSchema,
+    ]
+):
     schema_class = BooleanExpressionSchema
     _parser_name = "condition"
     _parser_element_for_get_source = grammar.condition_with_source
     _parser_element_for_parsing = grammar.condition
 
-    def __init__(self, left, operator, right, has_explicit_parens=False):
+    def __init__(
+        self,
+        left: "CompareExpression | RegexExpression | InExpression | NotInExpression | NegativeExpression | BooleanExpression | LSString | Number | SelectorNode | Array | MethodCall | Regexp",  # noqa: E501
+        operator,
+        right: "CompareExpression | RegexExpression | InExpression | NotInExpression | NegativeExpression | BooleanExpression | LSString | Number | SelectorNode | Array | MethodCall | Regexp",  # noqa: E501
+        has_explicit_parens=False,
+    ):
         super().__init__()
 
         self.left = left
@@ -1272,6 +1397,7 @@ class IfCondition(ASTNode["Plugin | Branch", IfConditionSchema]):
         | Number
         | SelectorNode
         | Array
+        | MethodCall
         | Regexp,
         body: tuple["Plugin | Branch", ...],
         s: str | None = None,
@@ -1336,6 +1462,7 @@ class ElseIfCondition(ASTNode["Plugin | Branch", ElseIfConditionSchema]):
         | Number
         | SelectorNode
         | Array
+        | MethodCall
         | Regexp,
         body: tuple["Plugin | Branch", ...],
         s: str | None = None,
@@ -1403,6 +1530,7 @@ class ElseCondition(ASTNode["Plugin | Branch", ElseConditionSchema]):
             | Number
             | SelectorNode
             | Array
+            | MethodCall
             | Regexp
             | None
         ) = None
@@ -1632,6 +1760,7 @@ SCHEMA_TO_NODE: dict[type[BaseModel], type[ASTNode]] = {
     BooleanSchema: Boolean,
     RegexpSchema: Regexp,
     SelectorNodeSchema: SelectorNode,
+    MethodCallSchema: MethodCall,
     # Data structures
     ArraySchema: Array,
     HashSchema: Hash,
@@ -1715,6 +1844,16 @@ def build_boolean_node(toks: ParseResults) -> Boolean:
 def build_selector_node(toks: ParseResults) -> SelectorNode:
     value = list(toks)[0]
     return SelectorNode(value)
+
+
+def build_method_call_node(s, loc, toks: ParseResults) -> MethodCall:
+    """Build MethodCall node from parse results.
+
+    Parse result structure: [method_name, [arg1, arg2, ...]]
+    """
+    method_name = list(toks)[0]  # LSBareWord
+    arguments = tuple(list(toks)[1].as_list()) if len(toks) > 1 and list(toks)[1] else ()
+    return MethodCall(method_name, arguments, s=s, loc=loc)
 
 
 def build_regexp_node(s, loc, toks: ParseResults) -> RegexExpression:

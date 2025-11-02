@@ -350,6 +350,60 @@ class TestRealWorldConfigs:
 
 
 @pytest.mark.integration
+class TestMethodCallIntegration:
+    """Integration tests for MethodCall in real-world scenarios."""
+
+    def test_method_call_in_condition(self):
+        """Test method call in conditional expression (rvalue position)."""
+        config = """filter {
+    if [field] == sprintf("%{pattern}") {
+        mutate { add_tag => ["matched"] }
+    }
+}"""
+        ast = parse_logstash_config(config)
+        assert ast is not None
+
+        # Verify roundtrip
+        logstash_str = ast.to_logstash()
+        ast2 = parse_logstash_config(logstash_str)
+        assert ast.to_python() == ast2.to_python()
+
+    def test_method_call_in_complex_condition(self):
+        """Test method call in complex conditional expression."""
+        config = """filter {
+    if [type] == "nginx" and [status] == sprintf("%{expected_status}") {
+        mutate {
+            add_tag => ["matched"]
+        }
+    }
+}"""
+        ast = parse_logstash_config(config)
+        assert ast is not None
+
+        # Roundtrip test
+        logstash_str = ast.to_logstash()
+        ast2 = parse_logstash_config(logstash_str)
+        assert ast.to_python() == ast2.to_python()
+
+    def test_nested_method_calls_in_condition(self):
+        """Test nested method calls in conditional expression."""
+        config = """filter {
+    if [field] == upper(lower([name])) {
+        mutate {
+            add_tag => ["processed"]
+        }
+    }
+}"""
+        ast = parse_logstash_config(config)
+        assert ast is not None
+
+        # Verify roundtrip
+        logstash_str = ast.to_logstash()
+        ast2 = parse_logstash_config(logstash_str)
+        assert ast.to_python() == ast2.to_python()
+
+
+@pytest.mark.integration
 class TestErrorHandling:
     """Test error handling in integration scenarios."""
 

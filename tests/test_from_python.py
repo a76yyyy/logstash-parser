@@ -15,6 +15,7 @@ from logstash_parser.ast_nodes import (
     InExpression,
     LSBareWord,
     LSString,
+    MethodCall,
     NegativeExpression,
     NotInExpression,
     Number,
@@ -42,6 +43,8 @@ from logstash_parser.schemas import (
     InExpressionSchema,
     LSBareWordSchema,
     LSStringSchema,
+    MethodCallData,
+    MethodCallSchema,
     NegativeExpressionData,
     NegativeExpressionSchema,
     NotInExpressionData,
@@ -642,6 +645,102 @@ class TestConditionalNodesFromPython:
         }
         node = Branch.from_python(data)
         assert isinstance(node, Branch)
+
+
+class TestMethodCallFromPython:
+    """Test creating MethodCall from Python/Pydantic."""
+
+    def test_method_call_from_pydantic(self):
+        """Test creating MethodCall from Pydantic schema."""
+        schema = MethodCallSchema(
+            method_call=MethodCallData(
+                method_name="upper",
+                arguments=[LSStringSchema(ls_string='"test"')],
+            )
+        )
+
+        node = MethodCall.from_python(schema)
+        assert isinstance(node, MethodCall)
+        assert node.method_name == "upper"
+        assert len(node.children) == 1
+
+    def test_method_call_from_dict(self):
+        """Test creating MethodCall from dict."""
+        data = {
+            "method_call": {
+                "method_name": "format",
+                "arguments": [
+                    {"ls_string": '"Hello"'},
+                    {"number": 42},
+                ],
+            }
+        }
+
+        node = MethodCall.from_python(data)
+        assert isinstance(node, MethodCall)
+        assert node.method_name == "format"
+        assert len(node.children) == 2
+
+    def test_nested_method_call_from_python(self):
+        """Test creating nested method calls from Python."""
+        data = {
+            "method_call": {
+                "method_name": "upper",
+                "arguments": [
+                    {
+                        "method_call": {
+                            "method_name": "lower",
+                            "arguments": [{"ls_string": '"TEST"'}],
+                        }
+                    }
+                ],
+            }
+        }
+
+        node = MethodCall.from_python(data)
+        assert isinstance(node, MethodCall)
+        assert node.method_name == "upper"
+        assert len(node.children) == 1
+        assert isinstance(node.children[0], MethodCall)
+        assert node.children[0].method_name == "lower"
+
+
+class TestMethodCallToPython:
+    """Test MethodCall.to_python() conversion."""
+
+    def test_method_call_to_python_dict(self):
+        """Test converting method call to Python dict."""
+        args = (LSString('"test"'),)
+        node = MethodCall("upper", args)
+
+        result = node.to_python()
+        assert "method_call" in result
+        assert result["method_call"]["method_name"] == "upper"
+        assert len(result["method_call"]["arguments"]) == 1
+
+    def test_method_call_to_pydantic(self):
+        """Test converting method call to Pydantic schema."""
+        args = (LSString('"test"'), Number(42))
+        node = MethodCall("format", args)
+
+        schema = node.to_python(as_pydantic=True)
+        assert isinstance(schema, MethodCallSchema)
+        assert schema.method_call.method_name == "format"
+        assert len(schema.method_call.arguments) == 2
+
+    def test_nested_method_call_to_python(self):
+        """Test converting nested method calls to Python."""
+        inner = MethodCall("lower", (LSString('"TEST"'),))
+        outer = MethodCall("upper", (inner,))
+
+        result = outer.to_python()
+        assert "method_call" in result
+        assert result["method_call"]["method_name"] == "upper"
+
+        # Check nested method call
+        inner_arg = result["method_call"]["arguments"][0]
+        assert "method_call" in inner_arg
+        assert inner_arg["method_call"]["method_name"] == "lower"
 
 
 class TestComplexRoundtrip:

@@ -1,5 +1,7 @@
 """Pytest configuration and fixtures."""
 
+from pathlib import Path
+
 import pytest
 
 
@@ -195,3 +197,25 @@ filter {
   }
 }
 """
+
+
+@pytest.fixture(scope="session")
+def comprehensive_config_file():
+    """Path to comprehensive test configuration file.
+
+    Uses session scope to avoid reading the file multiple times.
+    """
+    fixtures_dir = Path(__file__).parent / "fixtures"
+    config_file = fixtures_dir / "comprehensive_test.conf"
+    assert config_file.exists(), f"Comprehensive config file not found: {config_file}"
+    return config_file
+
+
+@pytest.fixture
+def comprehensive_config(comprehensive_config_file: Path):
+    """Comprehensive test configuration content.
+
+    Uses function scope to ensure each test gets a fresh read.
+    This prevents state leakage between tests.
+    """
+    return comprehensive_config_file.read_text()

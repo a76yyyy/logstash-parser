@@ -513,7 +513,7 @@ class TestMethodCallEdgeCases:
 class TestFromSchemaErrors:
     """Test from_schema error handling."""
 
-    def test_unknown_schema_type_raises_error(self):
+    def test_unknown_schema_type_raises_error(self) -> None:
         """Test that unknown schema type raises ValueError."""
         from pydantic import BaseModel
 

@@ -472,12 +472,7 @@ class Regexp(ASTNode[ASTNode, RegexpSchema]):
 
         # NOTE: When rendering / printing, lexeme will have quotations around it.
         self.lexeme = lexeme  # in python, this is like: '"message"'
-
-        try:
-            self.value = rf"{lexeme}"
-
-        except Exception as e:
-            raise ValueError(f"Invalid string literal {lexeme!r}: {e}") from None
+        self.value = rf"{lexeme}"
 
     def _to_pydantic_model(self):
         return RegexpSchema(regexp=self.lexeme)
@@ -748,10 +743,10 @@ class Attribute(ASTNode[ASTNode, AttributeSchema]):
         # Convert Attribute to dict with single key-value pair
         name_schema = self.name._to_pydantic_model()
         # Extract the actual name value from the schema based on type
-        if isinstance(name_schema, LSStringSchema):
-            name_str = name_schema.ls_string
-        elif isinstance(name_schema, LSBareWordSchema):
+        if isinstance(name_schema, LSBareWordSchema):
             name_str = name_schema.ls_bare_word
+        elif isinstance(name_schema, LSStringSchema):
+            name_str = name_schema.ls_string
         else:
             # Fallback: use model_dump_json
             name_str = name_schema.model_dump_json()
@@ -1205,9 +1200,7 @@ class NegativeExpression(
         self.set_expression_context(True)  # Mark sub-nodes as expression context
 
     def __repr__(self):
-        return f"not {self.expression}".replace(
-            "not not", ""
-        )  # Replace double negatives with empty string. Not required but makes life easier
+        return self.to_repr()  # Replace double negatives with empty string. Not required but makes life easier
 
     def to_repr(self, indent=0):
         return f"not {self.expression}".replace("not not", "")
@@ -1471,7 +1464,6 @@ class ElseIfCondition(ASTNode["Plugin | Branch", ElseIfConditionSchema]):
         super().__init__(s=s, loc=loc)
         self.expr = expr
         self.children = body
-        self.combined_expr = None
 
     def to_repr(self, indent: int = 0) -> str:
         ind = " " * indent
@@ -1535,7 +1527,6 @@ class ElseCondition(ASTNode["Plugin | Branch", ElseConditionSchema]):
             | None
         ) = None
         self.children = body
-        self.combined_expr = None
 
     def to_repr(self, indent: int = 0) -> str:
         ind = " " * indent
@@ -1558,17 +1549,11 @@ class ElseCondition(ASTNode["Plugin | Branch", ElseConditionSchema]):
 
     def to_logstash(self, indent=0, is_dm_branch=False, **kwargs):
         if not is_dm_branch:
-            if self.combined_expr and self.expr:
-                out = f"else if {self.expr.to_logstash(**kwargs)} "
-            else:
-                out = "else"
+            out = "else"
             return out
 
         ind = " " * indent
-        if self.combined_expr and self.expr:
-            out = f" else if {self.expr.to_logstash(**kwargs)} {{\n"
-        else:
-            out = " else {\n"
+        out = " else {\n"
         for child in self.children:
             child_out = child.to_logstash(indent + 2, is_dm_branch=is_dm_branch, **kwargs)
             out += child_out

@@ -1,5 +1,7 @@
 """Tests for to_logstash() method and Logstash config generation."""
 
+import pytest
+
 from logstash_parser import parse_logstash_config
 from logstash_parser.ast_nodes import (
     Array,
@@ -953,3 +955,331 @@ class TestRoundtripConsistency:
         # After first roundtrip, should be stable
         assert regen2 == regen3
         assert ast2.to_python() == ast3.to_python()
+
+
+class TestHashEntryNestedStructures:
+    """Test HashEntry.to_logstash() with nested Hash and Plugin (lines 638-649)."""
+
+    def test_hash_entry_with_nested_hash(self):
+        """Test HashEntry with nested Hash value."""
+        from logstash_parser.ast_nodes import Hash, HashEntryNode, LSString
+
+        # Create nested hash: "outer" => { "inner" => "value" }
+        inner_entry = HashEntryNode(LSString('"inner"'), LSString('"value"'))
+        inner_hash = Hash((inner_entry,))
+        outer_entry = HashEntryNode(LSString('"outer"'), inner_hash)
+
+        output = outer_entry.to_logstash()
+        assert '"outer"' in output
+        assert "=>" in output
+        assert "{" in output
+        assert '"inner"' in output
+        assert '"value"' in output
+
+    def test_hash_entry_with_nested_plugin(self):
+        """Test HashEntry with nested Plugin value (lines 643-649)."""
+        from logstash_parser.ast_nodes import Attribute, HashEntryNode, LSBareWord, LSString, Plugin
+
+        # Create: "codec" => json { charset => "UTF-8" }
+        attr = Attribute(LSBareWord("charset"), LSString('"UTF-8"'))
+        plugin = Plugin("json", (attr,))
+        entry = HashEntryNode(LSString('"codec"'), plugin)
+
+        output = entry.to_logstash(indent=2)
+        assert '"codec"' in output
+        assert "=>" in output
+        assert "json" in output
+        assert "charset" in output
+        assert '"UTF-8"' in output
+
+    def test_hash_entry_multiline_nested_hash(self):
+        """Test HashEntry with multiline nested hash."""
+        from logstash_parser.ast_nodes import Hash, HashEntryNode, LSString
+
+        # Create deeply nested structure
+        inner1 = HashEntryNode(LSString('"key1"'), LSString('"val1"'))
+        inner2 = HashEntryNode(LSString('"key2"'), LSString('"val2"'))
+        inner_hash = Hash((inner1, inner2))
+        outer_entry = HashEntryNode(LSString('"config"'), inner_hash)
+
+        output = outer_entry.to_logstash()
+        lines = output.split("\n")
+        # Should have multiple lines
+        assert len(lines) > 1
+        assert '"config"' in output
+        assert '"key1"' in output
+        assert '"key2"' in output
+
+
+class TestConfigToLogstashFormatting:
+    """Test Config.to_logstash() formatting (lines 1740, 1895)."""
+
+    def test_config_section_spacing(self):
+        """Test that Config adds blank lines between sections."""
+        config = """
+        input {
+          stdin {}
+        }
+        filter {
+          mutate {}
+        }
+        output {
+          stdout {}
+        }
+        """
+        ast = parse_logstash_config(config)
+        regenerated = ast.to_logstash()
+
+        # Should have blank lines between sections
+        lines = regenerated.split("\n")
+        # Count empty lines
+        empty_lines = [i for i, line in enumerate(lines) if line.strip() == ""]
+        assert len(empty_lines) >= 2  # At least 2 blank lines between 3 sections
+
+    def test_config_last_section_no_extra_newline(self):
+        """Test that last section doesn't have extra blank line."""
+        config = """
+        filter {
+          mutate {}
+        }
+        """
+        ast = parse_logstash_config(config)
+        regenerated = ast.to_logstash()
+
+        # Should not end with multiple newlines
+        assert not regenerated.endswith("\n\n\n")
+
+
+class TestElseConditionSpecialCases:
+    """Test ElseCondition special cases (lines 1561-1565, 1569, 1576)."""
+
+    def test_else_condition_non_dm_branch(self):
+        """Test ElseCondition without combined_expr."""
+        from logstash_parser.ast_nodes import ElseCondition, Plugin
+
+        plugin = Plugin("drop", ())
+        condition = ElseCondition((plugin,))
+
+        # Test both modes
+        output1 = condition.to_logstash(is_dm_branch=False)
+        assert output1 == "else"
+
+        output2 = condition.to_logstash(is_dm_branch=True)
+        assert "else {" in output2
+
+
+class TestIfElseIfConditionNonDmBranch:
+    """Test IfCondition and ElseIfCondition non-dm_branch mode (lines 1434, 1500)."""
+
+    def test_if_condition_non_dm_branch(self):
+        """Test IfCondition.to_logstash() with is_dm_branch=False."""
+        from logstash_parser.ast_nodes import CompareExpression, IfCondition, Number, SelectorNode
+
+        expr = CompareExpression(SelectorNode("[status]"), "==", Number(200))
+        condition = IfCondition(expr, ())
+
+        output = condition.to_logstash(is_dm_branch=False)
+        assert output.startswith("if")
+        assert "[status]" in output
+        assert "==" in output
+        assert "200" in output
+        # Should not have opening brace in non-dm_branch mode
+        assert "{" not in output
+
+    def test_else_if_condition_non_dm_branch(self):
+        """Test ElseIfCondition.to_logstash() with is_dm_branch=False."""
+        from logstash_parser.ast_nodes import ElseIfCondition, SelectorNode
+
+        expr = SelectorNode("[field]")
+        condition = ElseIfCondition(expr, ())
+
+        output = condition.to_logstash(is_dm_branch=False)
+        assert output.startswith("else if")
+        assert "[field]" in output
+        # Should not have opening brace in non-dm_branch mode
+        assert "{" not in output
+
+
+class TestBranchFromPydanticEdgeCases:
+    """Test Branch._from_pydantic() edge cases (lines 1626, 1631)."""
+
+    def test_branch_from_pydantic_with_all_conditions(self):
+        """Test Branch.from_python() with if, else-if, and else."""
+        from logstash_parser.ast_nodes import Branch
+        from logstash_parser.schemas import (
+            BranchSchema,
+            ElseConditionSchema,
+            ElseIfConditionData,
+            ElseIfConditionSchema,
+            IfConditionData,
+            IfConditionSchema,
+            SelectorNodeSchema,
+        )
+
+        schema = BranchSchema(
+            branch=[
+                IfConditionSchema(if_condition=IfConditionData(expr=SelectorNodeSchema(selector_node="[a]"), body=[])),
+                ElseIfConditionSchema(
+                    else_if_condition=ElseIfConditionData(expr=SelectorNodeSchema(selector_node="[b]"), body=[])
+                ),
+                ElseConditionSchema(else_condition=[]),
+            ]
+        )
+
+        node = Branch.from_python(schema)
+        assert isinstance(node, Branch)
+        assert len(node.children) == 3
+
+    def test_branch_from_pydantic_no_if_raises_error(self):
+        """Test Branch._from_pydantic() raises error without if condition."""
+        from logstash_parser.ast_nodes import Branch
+        from logstash_parser.schemas import BranchSchema, ElseConditionSchema
+
+        # Create branch with only else (no if)
+        schema = BranchSchema(branch=[ElseConditionSchema(else_condition=[])])
+
+        with pytest.raises(ValueError, match="Branch must have an if condition"):
+            Branch.from_python(schema)
+
+
+class TestAttributeFromPydanticFallback:
+    """Test Attribute._to_pydantic_model() fallback (line 757)."""
+
+    def test_attribute_with_number_name_fallback(self):
+        """Test Attribute with Number as name (edge case for fallback)."""
+        from logstash_parser.ast_nodes import Attribute, Number
+
+        # This is an unusual case, but test the fallback path
+        attr = Attribute(Number(123), Number(456))
+
+        # Should use fallback to model_dump_json
+        schema = attr._to_pydantic_model()
+        assert schema is not None
+
+    def test_attribute_from_pydantic_multiple_keys_error(self):
+        """Test Attribute._from_pydantic() with multiple keys raises error (line 766)."""
+        from logstash_parser.ast_nodes import Attribute
+        from logstash_parser.schemas import AttributeSchema, LSStringSchema
+
+        # Create invalid schema with multiple keys
+        schema = AttributeSchema(
+            {"key1": LSStringSchema(ls_string='"val1"'), "key2": LSStringSchema(ls_string='"val2"')}
+        )
+
+        with pytest.raises(ValueError, match="Attribute must have exactly one name-value pair"):
+            Attribute.from_python(schema)
+
+
+class TestBooleanExpressionFromPydantic:
+    """Test BooleanExpression._from_pydantic() (lines 1369-1373)."""
+
+    def test_boolean_expression_from_pydantic(self):
+        """Test BooleanExpression.from_python() with schema."""
+        from logstash_parser.ast_nodes import BooleanExpression
+        from logstash_parser.schemas import BooleanExpressionData, BooleanExpressionSchema, SelectorNodeSchema
+
+        schema = BooleanExpressionSchema(
+            boolean_expression=BooleanExpressionData(
+                left=SelectorNodeSchema(selector_node="[a]"),
+                operator="and",
+                right=SelectorNodeSchema(selector_node="[b]"),
+            )
+        )
+
+        node = BooleanExpression.from_python(schema)
+        assert isinstance(node, BooleanExpression)
+        assert node.operator == "and"
+
+
+class TestUnusedFunction:
+    """Test unused function build_expression_unwrap (line 1895)."""
+
+    def test_build_expression_unwrap_exists(self):
+        """Test that build_expression_unwrap function exists."""
+        from logstash_parser.ast_nodes import build_expression_unwrap
+
+        # Function should exist even if unused
+        assert callable(build_expression_unwrap)
+
+
+class TestHashToLogstashEdgeCases:
+    """Test Hash.to_logstash() edge cases (lines 677-679, 696)."""
+
+    def test_hash_with_selector_key(self):
+        """Test Hash with SelectorNode as key."""
+        from logstash_parser.ast_nodes import Hash, HashEntryNode, LSString, SelectorNode
+
+        entry = HashEntryNode(SelectorNode("[field]"), LSString('"value"'))
+        hash_node = Hash((entry,))
+
+        output = hash_node.to_logstash()
+        assert "[field]" in output
+        assert '"value"' in output
+
+    def test_hash_with_boolean_value(self):
+        """Test Hash with Boolean value."""
+        from logstash_parser.ast_nodes import Boolean, Hash, HashEntryNode, LSString
+
+        entry = HashEntryNode(LSString('"enabled"'), Boolean(True))
+        hash_node = Hash((entry,))
+
+        output = hash_node.to_logstash()
+        assert '"enabled"' in output
+        assert "true" in output
+
+
+class TestSelectorNodeEdgeCases:
+    """Test SelectorNode edge cases (lines 569-571, 578)."""
+
+    def test_selector_node_to_repr(self):
+        """Test SelectorNode.to_repr() method."""
+        from logstash_parser.ast_nodes import SelectorNode
+
+        node = SelectorNode("[field][subfield]")
+        result = node.to_repr()
+        assert "SelectorNode" in result
+        assert "[field][subfield]" in result
+
+    def test_selector_node_to_repr_with_indent(self):
+        """Test SelectorNode.to_repr() with indentation."""
+        from logstash_parser.ast_nodes import SelectorNode
+
+        node = SelectorNode("[test]")
+        result = node.to_repr(indent=2)
+        assert result.startswith("  ")
+
+
+class TestPluginToLogstashEdgeCases:
+    """Test Plugin.to_logstash() edge cases (line 985, 992)."""
+
+    def test_plugin_to_repr(self):
+        """Test Plugin.to_repr() method."""
+        from logstash_parser.ast_nodes import Attribute, LSBareWord, LSString, Plugin
+
+        attr = Attribute(LSBareWord("field"), LSString('"value"'))
+        plugin = Plugin("mutate", (attr,))
+
+        result = plugin.to_repr()
+        assert "Plugin" in result
+        assert "mutate" in result
+
+
+class TestNumberToRepr:
+    """Test Number.to_repr() method (line 1213)."""
+
+    def test_number_to_repr(self):
+        """Test Number.to_repr() method."""
+        from logstash_parser.ast_nodes import Number
+
+        node = Number(42)
+        result = node.to_repr()
+        assert "Number" in result
+        assert "42" in result
+
+    def test_number_to_repr_with_indent(self):
+        """Test Number.to_repr() with indentation."""
+        from logstash_parser.ast_nodes import Number
+
+        node = Number(123)
+        result = node.to_repr(indent=4)
+        assert result.startswith("    ")

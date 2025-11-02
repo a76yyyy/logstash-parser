@@ -807,3 +807,325 @@ class TestComplexRoundtrip:
         ast2 = Config.from_python(schema)
 
         assert ast1.to_python() == ast2.to_python()
+
+
+class TestFromPythonEdgeCases:
+    """Test from_python edge cases."""
+
+    def test_from_python_with_dict(self):
+        """Test from_python with dict input."""
+        data = {"ls_string": '"test"'}
+        node = LSString.from_python(data)
+
+        assert isinstance(node, LSString)
+        assert node.value == "test"
+
+    def test_from_python_with_schema(self):
+        """Test from_python with schema input."""
+        from logstash_parser.schemas import LSStringSchema
+
+        schema = LSStringSchema(ls_string='"test"')
+        node = LSString.from_python(schema)
+
+        assert isinstance(node, LSString)
+        assert node.value == "test"
+
+    def test_from_python_complex_structure(self):
+        """Test from_python with complex nested structure."""
+        data = {
+            "config": [
+                {
+                    "plugin_section": {
+                        "filter": [
+                            {
+                                "plugin": {
+                                    "plugin_name": "mutate",
+                                    "attributes": [
+                                        {
+                                            "add_field": {
+                                                "hash": {
+                                                    '"key"': {"ls_string": '"value"'},
+                                                }
+                                            }
+                                        }
+                                    ],
+                                }
+                            }
+                        ]
+                    }
+                }
+            ]
+        }
+
+        config = Config.from_python(data)
+        assert isinstance(config, Config)
+        assert len(config.children) == 1
+
+
+class TestBooleanExpressionToSource:
+    """Test BooleanExpression.to_source() method (line 1375-1379)."""
+
+    def test_boolean_expression_to_source(self):
+        """Test BooleanExpression.to_source() reconstruction."""
+        from logstash_parser.ast_nodes import BooleanExpression, SelectorNode
+
+        left = SelectorNode("[a]")
+        right = SelectorNode("[b]")
+        expr = BooleanExpression(left, "and", right)
+
+        result = expr.to_source()
+        assert "[a]" in result
+        assert "and" in result
+        assert "[b]" in result
+
+    def test_boolean_expression_to_source_with_or(self):
+        """Test BooleanExpression.to_source() with or operator."""
+        from logstash_parser.ast_nodes import BooleanExpression, SelectorNode
+
+        left = SelectorNode("[x]")
+        right = SelectorNode("[y]")
+        expr = BooleanExpression(left, "or", right)
+
+        result = expr.to_source()
+        assert "[x]" in result
+        assert "or" in result
+        assert "[y]" in result
+
+
+class TestPluginSectionFromPython:
+    """Test PluginSectionNode.from_python() edge cases."""
+
+    def test_plugin_section_with_multiple_plugins(self):
+        """Test PluginSectionNode with multiple plugins."""
+        from logstash_parser.schemas import PluginData, PluginSchema, PluginSectionSchema
+
+        schema = PluginSectionSchema(
+            plugin_section={
+                "filter": [
+                    PluginSchema(plugin=PluginData(plugin_name="grok", attributes=[])),
+                    PluginSchema(plugin=PluginData(plugin_name="mutate", attributes=[])),
+                    PluginSchema(plugin=PluginData(plugin_name="date", attributes=[])),
+                ]
+            }
+        )
+
+        node = PluginSectionNode.from_python(schema)
+        assert isinstance(node, PluginSectionNode)
+        assert node.plugin_type == "filter"
+        assert len(node.children) == 3
+
+    def test_plugin_section_with_branch(self):
+        """Test PluginSectionNode with Branch."""
+        from logstash_parser.schemas import (
+            BranchSchema,
+            IfConditionData,
+            IfConditionSchema,
+            PluginSectionSchema,
+            SelectorNodeSchema,
+        )
+
+        schema = PluginSectionSchema(
+            plugin_section={
+                "filter": [
+                    BranchSchema(
+                        branch=[
+                            IfConditionSchema(
+                                if_condition=IfConditionData(expr=SelectorNodeSchema(selector_node="[field]"), body=[])
+                            )
+                        ]
+                    )
+                ]
+            }
+        )
+
+        node = PluginSectionNode.from_python(schema)
+        assert isinstance(node, PluginSectionNode)
+        assert len(node.children) == 1
+        assert isinstance(node.children[0], Branch)
+
+
+class TestConfigFromPythonMultipleSections:
+    """Test Config.from_python() with multiple sections."""
+
+    def test_config_with_all_sections(self):
+        """Test Config with input, filter, and output sections."""
+        from logstash_parser.schemas import ConfigSchema, PluginData, PluginSchema, PluginSectionSchema
+
+        schema = ConfigSchema(
+            config=[
+                PluginSectionSchema(
+                    plugin_section={"input": [PluginSchema(plugin=PluginData(plugin_name="stdin", attributes=[]))]}
+                ),
+                PluginSectionSchema(
+                    plugin_section={"filter": [PluginSchema(plugin=PluginData(plugin_name="mutate", attributes=[]))]}
+                ),
+                PluginSectionSchema(
+                    plugin_section={"output": [PluginSchema(plugin=PluginData(plugin_name="stdout", attributes=[]))]}
+                ),
+            ]
+        )
+
+        node = Config.from_python(schema)
+        assert isinstance(node, Config)
+        assert len(node.children) == 3
+        assert node.children[0].plugin_type == "input"
+        assert node.children[1].plugin_type == "filter"
+        assert node.children[2].plugin_type == "output"
+
+
+class TestHashFromPythonComplexKeys:
+    """Test Hash.from_python() with complex keys."""
+
+    def test_hash_with_bareword_keys(self):
+        """Test Hash with bareword keys."""
+        from logstash_parser.schemas import HashSchema, NumberSchema
+
+        schema = HashSchema(hash={"field1": NumberSchema(number=100), "field2": NumberSchema(number=200)})
+
+        node = Hash.from_python(schema)
+        assert isinstance(node, Hash)
+        assert len(node.children) == 2
+
+    def test_hash_with_mixed_value_types(self):
+        """Test Hash with mixed value types."""
+        from logstash_parser.schemas import (
+            ArraySchema,
+            BooleanSchema,
+            HashSchema,
+            LSStringSchema,
+            NumberSchema,
+        )
+
+        schema = HashSchema(
+            hash={
+                '"string_field"': LSStringSchema(ls_string='"value"'),
+                '"number_field"': NumberSchema(number=42),
+                '"bool_field"': BooleanSchema(boolean=True),
+                '"array_field"': ArraySchema(array=[NumberSchema(number=1), NumberSchema(number=2)]),
+            }
+        )
+
+        node = Hash.from_python(schema)
+        assert isinstance(node, Hash)
+        assert len(node.children) == 4
+
+
+class TestArrayFromPythonMixedTypes:
+    """Test Array.from_python() with mixed types."""
+
+    def test_array_with_all_types(self):
+        """Test Array with all supported types."""
+        from logstash_parser.schemas import (
+            ArraySchema,
+            BooleanSchema,
+            HashSchema,
+            LSStringSchema,
+            NumberSchema,
+        )
+
+        schema = ArraySchema(
+            array=[
+                LSStringSchema(ls_string='"text"'),
+                NumberSchema(number=123),
+                BooleanSchema(boolean=False),
+                HashSchema(hash={'"key"': LSStringSchema(ls_string='"val"')}),
+                ArraySchema(array=[NumberSchema(number=1)]),
+            ]
+        )
+
+        node = Array.from_python(schema)
+        assert isinstance(node, Array)
+        assert len(node.children) == 5
+
+
+class TestMethodCallFromPythonNested:
+    """Test MethodCall.from_python() with nested calls."""
+
+    def test_deeply_nested_method_calls(self):
+        """Test deeply nested method calls (3 levels)."""
+        from logstash_parser.schemas import LSStringSchema, MethodCallData, MethodCallSchema
+
+        # level3(level2(level1("test")))
+        schema = MethodCallSchema(
+            method_call=MethodCallData(
+                method_name="level3",
+                arguments=[
+                    MethodCallSchema(
+                        method_call=MethodCallData(
+                            method_name="level2",
+                            arguments=[
+                                MethodCallSchema(
+                                    method_call=MethodCallData(
+                                        method_name="level1", arguments=[LSStringSchema(ls_string='"test"')]
+                                    )
+                                )
+                            ],
+                        )
+                    )
+                ],
+            )
+        )
+
+        node = MethodCall.from_python(schema)
+        assert isinstance(node, MethodCall)
+        assert node.method_name == "level3"
+        assert isinstance(node.children[0], MethodCall)
+        assert node.children[0].method_name == "level2"
+
+
+class TestExpressionFromPythonEdgeCases:
+    """Test expression from_python() edge cases."""
+
+    def test_compare_expression_with_method_call(self):
+        """Test CompareExpression with MethodCall."""
+        from logstash_parser.schemas import (
+            CompareExpressionData,
+            CompareExpressionSchema,
+            LSStringSchema,
+            MethodCallData,
+            MethodCallSchema,
+            SelectorNodeSchema,
+        )
+
+        schema = CompareExpressionSchema(
+            compare_expression=CompareExpressionData(
+                left=SelectorNodeSchema(selector_node="[field]"),
+                operator="==",
+                right=MethodCallSchema(
+                    method_call=MethodCallData(method_name="upper", arguments=[LSStringSchema(ls_string='"test"')])
+                ),
+            )
+        )
+
+        node = CompareExpression.from_python(schema)
+        assert isinstance(node, CompareExpression)
+        assert isinstance(node.right, MethodCall)
+
+    def test_in_expression_with_nested_array(self):
+        """Test InExpression with nested array."""
+        from logstash_parser.schemas import (
+            ArraySchema,
+            InExpressionData,
+            InExpressionSchema,
+            LSStringSchema,
+            SelectorNodeSchema,
+        )
+
+        schema = InExpressionSchema(
+            in_expression=InExpressionData(
+                value=SelectorNodeSchema(selector_node="[type]"),
+                operator="in",
+                collection=ArraySchema(
+                    array=[
+                        LSStringSchema(ls_string='"error"'),
+                        LSStringSchema(ls_string='"warning"'),
+                        LSStringSchema(ls_string='"critical"'),
+                    ]
+                ),
+            )
+        )
+
+        node = InExpression.from_python(schema)
+        assert isinstance(node, InExpression)
+        assert isinstance(node.collection, Array)
+        assert len(node.collection.children) == 3

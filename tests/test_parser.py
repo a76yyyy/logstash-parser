@@ -1048,3 +1048,52 @@ class TestGrammarRuleFixes:
         """
         ast3 = parse_logstash_config(config3)
         assert ast3 is not None
+
+
+class TestComplexExpressionParsing:
+    """Test complex expression parsing scenarios."""
+
+    def test_nested_boolean_with_parentheses(self):
+        """Test nested boolean expressions with parentheses."""
+        config = """filter {
+    if (([a] and [b]) or ([c] and [d])) and [e] {
+        mutate { }
+    }
+}"""
+        ast = parse_logstash_config(config)
+        assert ast is not None
+
+        # Roundtrip test
+        regenerated = ast.to_logstash()
+        ast2 = parse_logstash_config(regenerated)
+        assert ast.to_python() == ast2.to_python()
+
+    def test_multiple_levels_of_nesting(self):
+        """Test multiple levels of boolean expression nesting."""
+        config = """filter {
+    if ((([a] or [b]) and [c]) or [d]) and [e] {
+        mutate { }
+    }
+}"""
+        ast = parse_logstash_config(config)
+        assert ast is not None
+
+    def test_xor_with_parentheses(self):
+        """Test xor operator with parentheses."""
+        config = """filter {
+    if ([a] xor ([b] or [c])) and [d] {
+        mutate { }
+    }
+}"""
+        ast = parse_logstash_config(config)
+        assert ast is not None
+
+    def test_nand_with_nested_expressions(self):
+        """Test nand operator with nested expressions."""
+        config = """filter {
+    if [a] nand ([b] and [c]) {
+        mutate { }
+    }
+}"""
+        ast = parse_logstash_config(config)
+        assert ast is not None

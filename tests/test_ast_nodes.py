@@ -246,6 +246,58 @@ class TestPluginNodes:
         node = Config((section,))
         assert len(node.children) == 1
 
+    def test_plugin_section_with_mixed_content(self):
+        """Test PluginSectionNode with plugins and branches."""
+        plugin1 = Plugin("grok", ())
+
+        expr = CompareExpression(SelectorNode("[type]"), "==", LSString('"nginx"'))
+        plugin2 = Plugin("mutate", ())
+        if_cond = IfCondition(expr, (plugin2,))
+        branch = Branch(if_cond, None, None)
+
+        plugin3 = Plugin("date", ())
+
+        section = PluginSectionNode("filter", [plugin1, branch, plugin3])
+
+        assert len(section.children) == 3
+        assert isinstance(section.children[0], Plugin)
+        assert isinstance(section.children[1], Branch)
+        assert isinstance(section.children[2], Plugin)
+
+    def test_config_with_multiple_same_type_sections(self):
+        """Test Config with multiple sections of same type."""
+        plugin1 = Plugin("grok", ())
+        section1 = PluginSectionNode("filter", [plugin1])
+
+        plugin2 = Plugin("mutate", ())
+        section2 = PluginSectionNode("filter", [plugin2])
+
+        plugin3 = Plugin("date", ())
+        section3 = PluginSectionNode("filter", [plugin3])
+
+        config = Config((section1, section2, section3))
+
+        assert len(config.children) == 3
+        assert all(child.plugin_type == "filter" for child in config.children)
+
+    def test_config_with_all_section_types(self):
+        """Test Config with input, filter, and output sections."""
+        input_plugin = Plugin("file", ())
+        input_section = PluginSectionNode("input", [input_plugin])
+
+        filter_plugin = Plugin("grok", ())
+        filter_section = PluginSectionNode("filter", [filter_plugin])
+
+        output_plugin = Plugin("elasticsearch", ())
+        output_section = PluginSectionNode("output", [output_plugin])
+
+        config = Config((input_section, filter_section, output_section))
+
+        assert len(config.children) == 3
+        assert config.children[0].plugin_type == "input"
+        assert config.children[1].plugin_type == "filter"
+        assert config.children[2].plugin_type == "output"
+
 
 class TestExpressionNodes:
     """Test expression AST nodes."""
@@ -361,6 +413,105 @@ class TestExpressionNodes:
         assert len(node.children) == 2
         assert isinstance(node.children[1], Regexp)
 
+    def test_hash_entry_with_method_call_value(self):
+        """Test HashEntryNode with method call as value."""
+        key = LSString('"key"')
+        value = MethodCall("upper", (LSString('"test"'),))
+        entry = HashEntryNode(key, value)
+
+        assert entry.key == key
+        assert entry.value == value
+
+    def test_attribute_with_method_call_value(self):
+        """Test Attribute with method call as value."""
+        name = LSBareWord("field")
+        value = MethodCall("sprintf", (LSString('"%{pattern}"'),))
+        attr = Attribute(name, value)
+
+        assert attr.name == name
+        assert attr.value == value
+
+    def test_compare_expression_with_method_call(self):
+        """Test CompareExpression with method call."""
+        left = SelectorNode("[field]")
+        right = MethodCall("upper", (LSString('"test"'),))
+        expr = CompareExpression(left, "==", right)
+
+        assert expr.left == left
+        assert expr.right == right
+
+    def test_regex_expression_with_method_call_left(self):
+        """Test RegexExpression with method call on left side."""
+        left = MethodCall("lower", (SelectorNode("[field]"),))
+        pattern = Regexp("/test/")
+        expr = RegexExpression(left, "=~", pattern)
+
+        assert expr.left == left
+        assert expr.pattern == pattern
+
+    def test_in_expression_with_method_call(self):
+        """Test InExpression with method call."""
+        value = MethodCall("upper", (SelectorNode("[field]"),))
+        collection = Array((LSString('"A"'), LSString('"B"')))
+        expr = InExpression(value, "in", collection)
+
+        assert expr.value == value
+        assert expr.collection == collection
+
+    def test_not_in_expression_with_method_call(self):
+        """Test NotInExpression with method call."""
+        value = MethodCall("lower", (SelectorNode("[field]"),))
+        collection = Array((LSString('"a"'), LSString('"b"')))
+        expr = NotInExpression(value, "not in", collection)
+
+        assert expr.value == value
+        assert expr.collection == collection
+
+    def test_negative_of_method_call(self):
+        """Test negation of method call."""
+        method_call = MethodCall("exists", (SelectorNode("[field]"),))
+        expr = NegativeExpression("!", method_call)
+
+        assert expr.operator == "!"
+        assert expr.expression == method_call
+
+    def test_negative_of_in_expression(self):
+        """Test negation of in expression."""
+        in_expr = InExpression(SelectorNode("[status]"), "in", Array((Number(200), Number(201))))
+        expr = NegativeExpression("!", in_expr)
+
+        result = expr.to_logstash()
+        assert "!" in result
+
+    def test_negative_of_regex_expression(self):
+        """Test negation of regex expression."""
+        regex_expr = RegexExpression(SelectorNode("[message]"), "=~", Regexp("/error/"))
+        expr = NegativeExpression("!", regex_expr)
+
+        result = expr.to_logstash()
+        assert "!" in result
+
+    def test_method_call_with_nested_array(self):
+        """Test method call with nested array argument."""
+        inner_arr = Array((Number(1), Number(2)))
+        outer_arr = Array((inner_arr, Number(3)))
+        method_call = MethodCall("process", (outer_arr,))
+
+        assert len(method_call.children) == 1
+        assert isinstance(method_call.children[0], Array)
+
+    def test_deeply_nested_method_calls(self):
+        """Test deeply nested method calls (10 levels)."""
+        current = MethodCall("level10", (LSString('"innermost"'),))
+
+        for i in range(9, 0, -1):
+            current = MethodCall(f"level{i}", (current,))
+
+        result = current.to_logstash()
+        assert "level1" in result
+        assert "level10" in result
+        assert "innermost" in result
+
 
 class TestConditionalNodes:
     """Test conditional branch AST nodes."""
@@ -405,6 +556,133 @@ class TestConditionalNodes:
         node = Branch(if_cond, None, else_cond)
         assert len(node.children) == 2
 
+    def test_branch_with_only_if(self):
+        """Test Branch with only if condition."""
+        expr = CompareExpression(SelectorNode("[type]"), "==", LSString('"nginx"'))
+        plugin = Plugin("mutate", ())
+        if_cond = IfCondition(expr, (plugin,))
+
+        branch = Branch(if_cond, None, None)
+
+        assert len(branch.children) == 1
+        assert isinstance(branch.children[0], IfCondition)
+
+    def test_branch_with_if_and_else(self):
+        """Test Branch with if and else."""
+        expr = CompareExpression(SelectorNode("[type]"), "==", LSString('"nginx"'))
+        plugin1 = Plugin("mutate", ())
+        if_cond = IfCondition(expr, (plugin1,))
+
+        plugin2 = Plugin("drop", ())
+        else_cond = ElseCondition((plugin2,))
+
+        branch = Branch(if_cond, None, else_cond)
+
+        assert len(branch.children) == 2
+
+    def test_branch_with_multiple_else_if(self):
+        """Test Branch with multiple else-if conditions."""
+        expr1 = CompareExpression(SelectorNode("[status]"), "==", Number(200))
+        plugin1 = Plugin("mutate", ())
+        if_cond = IfCondition(expr1, (plugin1,))
+
+        expr2 = CompareExpression(SelectorNode("[status]"), "==", Number(404))
+        plugin2 = Plugin("mutate", ())
+        else_if1 = ElseIfCondition(expr2, (plugin2,))
+
+        expr3 = CompareExpression(SelectorNode("[status]"), "==", Number(500))
+        plugin3 = Plugin("mutate", ())
+        else_if2 = ElseIfCondition(expr3, (plugin3,))
+
+        plugin4 = Plugin("drop", ())
+        else_cond = ElseCondition((plugin4,))
+
+        branch = Branch(if_cond, [else_if1, else_if2], else_cond)
+
+        assert len(branch.children) == 4
+
+
+class TestRValueNode:
+    """Test RValue node functionality."""
+
+    def test_rvalue_with_string(self):
+        """Test RValue wrapping a string."""
+        from logstash_parser.ast_nodes import RValue
+
+        string_node = LSString('"test"')
+        rvalue = RValue(string_node)
+
+        assert rvalue.value == string_node
+        assert len(rvalue.children) == 1
+        assert rvalue.children[0] == string_node
+
+    def test_rvalue_with_number(self):
+        """Test RValue wrapping a number."""
+        from logstash_parser.ast_nodes import RValue
+
+        number_node = Number(123)
+        rvalue = RValue(number_node)
+
+        assert rvalue.value == number_node
+
+    def test_rvalue_with_selector(self):
+        """Test RValue wrapping a selector."""
+        from logstash_parser.ast_nodes import RValue
+
+        selector_node = SelectorNode("[field]")
+        rvalue = RValue(selector_node)
+
+        assert rvalue.value == selector_node
+
+    def test_rvalue_with_array(self):
+        """Test RValue wrapping an array."""
+        from logstash_parser.ast_nodes import RValue
+
+        array_node = Array((Number(1), Number(2)))
+        rvalue = RValue(array_node)
+
+        assert rvalue.value == array_node
+
+    def test_rvalue_with_method_call(self):
+        """Test RValue wrapping a method call."""
+        from logstash_parser.ast_nodes import RValue
+
+        method_call = MethodCall("test", (LSString('"arg"'),))
+        rvalue = RValue(method_call)
+
+        assert rvalue.value == method_call
+
+    def test_rvalue_to_logstash(self):
+        """Test RValue.to_logstash()."""
+        from logstash_parser.ast_nodes import RValue
+
+        string_node = LSString('"test"')
+        rvalue = RValue(string_node)
+
+        result = rvalue.to_logstash()
+        assert result == '"test"'
+
+    def test_rvalue_to_source(self):
+        """Test RValue.to_source()."""
+        from logstash_parser.ast_nodes import RValue
+
+        number_node = Number(42)
+        rvalue = RValue(number_node)
+
+        result = rvalue.to_source()
+        assert result == 42
+
+    def test_rvalue_repr(self):
+        """Test RValue.__repr__()."""
+        from logstash_parser.ast_nodes import RValue
+
+        selector_node = SelectorNode("[field]")
+        rvalue = RValue(selector_node)
+
+        repr_str = repr(rvalue)
+        # RValue.__repr__ returns the wrapped value's repr
+        assert "[field]" in repr_str or "SelectorNode" in repr_str
+
 
 class TestNodeMethods:
     """Test common node methods."""
@@ -434,6 +712,94 @@ class TestNodeMethods:
         node2 = LSString('"test2"')
         assert node1.uid != node2.uid
 
+    def test_get_snake_case_key_lsstring(self):
+        """Test _get_snake_case_key for LSString."""
+        node = LSString('"test"')
+        key = node._get_snake_case_key()
+        assert key == "lsstring"
+
+    def test_get_snake_case_key_compare_expression(self):
+        """Test _get_snake_case_key for CompareExpression."""
+        left = SelectorNode("[field]")
+        right = Number(100)
+        node = CompareExpression(left, "==", right)
+        key = node._get_snake_case_key()
+        assert key == "compare_expression"
+
+    def test_get_snake_case_key_plugin_section(self):
+        """Test _get_snake_case_key for PluginSectionNode."""
+        plugin = Plugin("mutate", ())
+        node = PluginSectionNode("filter", [plugin])
+        key = node._get_snake_case_key()
+        assert key == "plugin_section_node"
+
+    def test_get_snake_case_key_method_call(self):
+        """Test _get_snake_case_key for MethodCall."""
+        node = MethodCall("test", ())
+        key = node._get_snake_case_key()
+        assert key == "method_call"
+
+    def test_traverse_with_non_astnode_children(self):
+        """Test traverse with mixed children types."""
+        from logstash_parser.ast_nodes import ASTNode
+
+        node = ASTNode()
+        node.children = (LSString('"test"'),)
+        # Should not raise error
+        node.traverse()
+
+    def test_set_expression_context_simple_node(self):
+        """Test setting expression context on simple node."""
+        node = LSString('"test"')
+        assert node.in_expression_context is False
+
+        node.set_expression_context(True)
+        assert node.in_expression_context is True
+
+    def test_set_expression_context_propagates(self):
+        """Test that expression context propagates to children."""
+        left = SelectorNode("[field]")
+        right = Number(100)
+        node = CompareExpression(left, "==", right)
+
+        assert node.in_expression_context is True
+        assert left.in_expression_context is True
+        assert right.in_expression_context is True
+
+        node.set_expression_context(False)
+        assert node.in_expression_context is False
+        assert left.in_expression_context is False
+        assert right.in_expression_context is False
+
+    def test_set_expression_context_nested(self):
+        """Test expression context on deeply nested structure."""
+        from logstash_parser.ast_nodes import BooleanExpression
+
+        inner_left = SelectorNode("[a]")
+        inner_right = Number(1)
+        inner_expr = CompareExpression(inner_left, "==", inner_right)
+
+        outer_left = inner_expr
+        outer_right = SelectorNode("[b]")
+        outer_expr = BooleanExpression(outer_left, "and", outer_right)
+
+        outer_expr.set_expression_context(True)
+
+        assert outer_expr.in_expression_context is True
+        assert inner_expr.in_expression_context is True
+        assert inner_left.in_expression_context is True
+        assert inner_right.in_expression_context is True
+        assert outer_right.in_expression_context is True
+
+    def test_set_expression_context_with_non_astnode_children(self):
+        """Test set_expression_context with mixed children."""
+        from logstash_parser.ast_nodes import ASTNode
+
+        node = ASTNode()
+        node.children = (LSString('"test"'),)
+        # Should not raise error
+        node.set_expression_context(True)
+
     def test_method_call_repr(self):
         """Test MethodCall __repr__."""
         args = (LSString('"test"'),)
@@ -459,3 +825,30 @@ class TestNodeMethods:
 
         repr_str = node.to_repr(indent=4)
         assert repr_str.startswith("    ")
+
+    def test_boolean_to_repr(self):
+        """Test Boolean.to_repr()."""
+        node = Boolean(True)
+        repr_str = node.to_repr()
+        assert "Boolean" in repr_str
+        assert "True" in repr_str
+
+    def test_boolean_to_repr_with_indent(self):
+        """Test Boolean.to_repr() with indentation."""
+        node = Boolean(False)
+        repr_str = node.to_repr(indent=4)
+        assert repr_str.startswith("    ")
+        assert "Boolean" in repr_str
+
+    def test_selector_to_repr(self):
+        """Test SelectorNode.to_repr()."""
+        node = SelectorNode("[field]")
+        repr_str = node.to_repr()
+        assert "SelectorNode" in repr_str
+        assert "[field]" in repr_str
+
+    def test_selector_to_repr_with_indent(self):
+        """Test SelectorNode.to_repr() with indentation."""
+        node = SelectorNode("[field]")
+        repr_str = node.to_repr(indent=2)
+        assert repr_str.startswith("  ")

@@ -324,3 +324,53 @@ class TestExpressionContext:
         ast = parse_logstash_config(config)
         result = ast.to_python()
         assert "config" in result
+
+
+class TestRoundtripWithComplexStructures:
+    """Test roundtrip with complex structures."""
+
+    def test_roundtrip_with_all_value_types(self):
+        """Test roundtrip with all value types."""
+        config = """filter {
+    mutate {
+        add_field => {
+            "string" => "value"
+            "number" => 123
+            "float" => 45.67
+            "bool_true" => true
+            "bool_false" => false
+            "array" => [1, 2, 3]
+            "nested" => {
+                "inner" => "value"
+            }
+        }
+    }
+}"""
+        ast1 = parse_logstash_config(config)
+        regenerated = ast1.to_logstash()
+        ast2 = parse_logstash_config(regenerated)
+
+        assert ast1.to_python() == ast2.to_python()
+
+    def test_roundtrip_with_complex_conditionals(self):
+        """Test roundtrip with complex conditional logic."""
+        config = """filter {
+    if ([status] >= 200 and [status] < 300) or [status] == 304 {
+        if [method] == "GET" {
+            mutate { add_tag => ["success_get"] }
+        } else if [method] == "POST" {
+            mutate { add_tag => ["success_post"] }
+        } else {
+            mutate { add_tag => ["success_other"] }
+        }
+    } else if [status] >= 400 and [status] < 500 {
+        mutate { add_tag => ["client_error"] }
+    } else {
+        mutate { add_tag => ["other"] }
+    }
+}"""
+        ast1 = parse_logstash_config(config)
+        regenerated = ast1.to_logstash()
+        ast2 = parse_logstash_config(regenerated)
+
+        assert ast1.to_python() == ast2.to_python()

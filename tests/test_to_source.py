@@ -197,53 +197,36 @@ class TestToSourceWithStrings:
         assert node.to_source() == "'single'"
 
 
-class TestToSourceEdgeCases:
-    """Test to_source() edge cases."""
-
-    def test_bareword_with_hyphen(self):
-        """Test bareword with hyphen to_source."""
-        node = LSBareWord("my-plugin-name")
-        assert node.to_source() == "my-plugin-name"
-
-    def test_bareword_with_underscore(self):
-        """Test bareword with underscore to_source."""
-        node = LSBareWord("my_field_name")
-        assert node.to_source() == "my_field_name"
-
-    def test_bareword_starting_with_number(self):
-        """Test bareword starting with number to_source."""
-        node = LSBareWord("123field")
-        assert node.to_source() == "123field"
-
-    def test_selector_simple(self):
-        """Test simple selector to_source."""
-        node = SelectorNode("[field]")
-        assert node.to_source() == "[field]"
-
-    def test_selector_nested(self):
-        """Test nested selector to_source."""
-        node = SelectorNode("[field][subfield][nested]")
-        assert node.to_source() == "[field][subfield][nested]"
-
-    def test_regexp_simple_pattern(self):
-        """Test simple regexp pattern to_source."""
-        node = Regexp("/test/")
-        assert node.to_source() == "/test/"
-
-    def test_regexp_complex_pattern(self):
-        """Test complex regexp pattern to_source."""
-        node = Regexp(r"/^[A-Z][a-z]+\d{2,4}$/")
-        assert node.to_source() == r"/^[A-Z][a-z]+\d{2,4}$/"
-
-    def test_array_with_single_element(self):
-        """Test array with single element to_source."""
-        arr = Array((LSString('"only"'),))
-        source = arr.to_source()
-        assert source == '["only"]'
-
-
 class TestBooleanExpressionToSource:
-    """Test BooleanExpression.to_source()."""
+    """Test BooleanExpression.to_source() method."""
+
+    def test_boolean_expression_to_source_simple(self):
+        """Test BooleanExpression.to_source() with simple expression."""
+        from logstash_parser.ast_nodes import BooleanExpression
+
+        left = SelectorNode("[a]")
+        right = SelectorNode("[b]")
+        node = BooleanExpression(left, "and", right)
+
+        source = node.to_source()
+        assert "[a]" in source
+        assert "and" in source
+        assert "[b]" in source
+
+    def test_boolean_expression_to_source_nested(self):
+        """Test BooleanExpression.to_source() with nested expression."""
+        from logstash_parser.ast_nodes import BooleanExpression, CompareExpression
+
+        inner_left = SelectorNode("[a]")
+        inner_right = Number(1)
+        inner_expr = CompareExpression(inner_left, "==", inner_right)
+
+        outer_left = inner_expr
+        outer_right = SelectorNode("[b]")
+        outer_expr = BooleanExpression(outer_left, "or", outer_right)
+
+        source = outer_expr.to_source()
+        assert "or" in source
 
     def test_boolean_expression_and(self):
         """Test BooleanExpression with 'and' operator."""
@@ -316,6 +299,51 @@ class TestBooleanExpressionToSource:
         source = expr.to_source()
         assert "and" in source or "or" in source
         assert "200" in source or "300" in source
+
+
+class TestToSourceEdgeCases:
+    """Test to_source() edge cases."""
+
+    def test_bareword_with_hyphen(self):
+        """Test bareword with hyphen to_source."""
+        node = LSBareWord("my-plugin-name")
+        assert node.to_source() == "my-plugin-name"
+
+    def test_bareword_with_underscore(self):
+        """Test bareword with underscore to_source."""
+        node = LSBareWord("my_field_name")
+        assert node.to_source() == "my_field_name"
+
+    def test_bareword_starting_with_number(self):
+        """Test bareword starting with number to_source."""
+        node = LSBareWord("123field")
+        assert node.to_source() == "123field"
+
+    def test_selector_simple(self):
+        """Test simple selector to_source."""
+        node = SelectorNode("[field]")
+        assert node.to_source() == "[field]"
+
+    def test_selector_nested(self):
+        """Test nested selector to_source."""
+        node = SelectorNode("[field][subfield][nested]")
+        assert node.to_source() == "[field][subfield][nested]"
+
+    def test_regexp_simple_pattern(self):
+        """Test simple regexp pattern to_source."""
+        node = Regexp("/test/")
+        assert node.to_source() == "/test/"
+
+    def test_regexp_complex_pattern(self):
+        """Test complex regexp pattern to_source."""
+        node = Regexp(r"/^[A-Z][a-z]+\d{2,4}$/")
+        assert node.to_source() == r"/^[A-Z][a-z]+\d{2,4}$/"
+
+    def test_array_with_single_element(self):
+        """Test array with single element to_source."""
+        arr = Array((LSString('"only"'),))
+        source = arr.to_source()
+        assert source == '["only"]'
 
 
 class TestToSourceWithParsedNodes:

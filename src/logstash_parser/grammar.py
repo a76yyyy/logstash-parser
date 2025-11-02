@@ -5,8 +5,10 @@
 from re import compile
 
 import pyparsing as pp
+from pyparsing import ParserElement
 from pyparsing import common as ppc
 
+ParserElement.enable_packrat()
 # Suppress tokens
 array_start = pp.Suppress(pp.Literal("["))
 array_stop = pp.Suppress(pp.Literal("]"))

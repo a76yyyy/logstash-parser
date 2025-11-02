@@ -9,7 +9,49 @@
 
 ## [Unreleased]
 
-暂无
+### 新增
+
+#### MethodCall 方法调用支持
+
+- ✅ 添加 `MethodCall` AST 节点，支持解析方法调用（如 `sprintf("%{field}", arg1, arg2)`）
+- ✅ 添加 `MethodCallSchema` 和 `MethodCallData` Schema 定义
+- ✅ 支持嵌套方法调用（如 `upper(lower("TEST"))`）
+- ✅ 支持多种参数类型：字符串、数字、选择器、数组、正则表达式
+- ✅ 方法调用可用于条件表达式的右值位置
+- ✅ 完整的测试覆盖（单元测试、集成测试、往返测试）
+
+### 修复
+
+#### 布尔表达式优先级
+
+- ✅ 修复布尔运算符优先级：`and`/`nand` (3) > `xor` (2) > `or` (1)
+- ✅ 使用 `pyparsing.infixNotation` 正确处理运算符优先级
+- ✅ 确保 `A or B and C` 解析为 `A or (B and C)`，而非 `(A or B) and C`
+- ✅ 支持显式括号标记（`has_explicit_parens`），保留用户添加的括号
+- ✅ 根据优先级自动添加必要的括号
+
+#### 条件语句格式化
+
+- ✅ 修复 `if` 语句前导空格问题
+- ✅ 修复 `else if` 和 `else` 与前面 `}` 的换行问题（应在同一行）
+- ✅ 修复 Hash 和 Plugin 嵌套时的格式问题（开括号应在同一行）
+- ✅ 修复 Regexp 重复斜杠问题（`lexeme` 已包含斜杠）
+- ✅ 修复 NotInExpression 多余括号问题
+- ✅ 修复 NegativeExpression 不必要的括号（简单选择器不需要括号）
+- ✅ 修复 PluginSection 和 Config 的换行和空行问题
+
+#### 注释处理
+
+- ✅ 简化注释正则表达式，移除复杂的 `newline_or_eoi` 处理
+- ✅ 使用 `r"[ \t]*#[^\r\n]*(?:\r?\n|$)"` 直接匹配注释模式
+
+### 改进
+
+#### 代码质量
+
+- ✅ 添加全面的回归测试类（9 个测试类，覆盖所有修复的问题）
+- ✅ 所有测试包含往返一致性验证
+- ✅ 改进类型注解的准确性（使用具体类型而非 `ASTNode`）
 
 ---
 

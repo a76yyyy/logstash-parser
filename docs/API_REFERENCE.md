@@ -366,6 +366,38 @@ print(s2.value)  # 'line1\nline2' (实际换行)
 
 - `raw: str` - 原始选择器字符串（如 `[foo][bar]`）
 
+#### `MethodCall`
+
+方法调用节点。
+
+**属性：**
+
+- `method_name: str` - 方法名称
+- `children: tuple[LSString | Number | SelectorNode | Array | MethodCall | Regexp, ...]` - 方法参数元组
+
+**示例：**
+
+```python
+# 简单方法调用
+method = MethodCall("sprintf", (LSString('"%{field}"'),))
+
+# 多参数方法调用
+method = MethodCall("format", (
+    LSString('"Hello"'),
+    LSString('"World"')
+))
+
+# 嵌套方法调用
+inner = MethodCall("lower", (LSString('"TEST"'),))
+outer = MethodCall("upper", (inner,))
+```
+
+**用途：**
+
+- 可用于条件表达式的右值位置
+- 支持嵌套调用
+- 支持多种参数类型
+
 ---
 
 ### 数据结构
@@ -499,6 +531,41 @@ Not In 表达式节点。
 - `left: ASTNode` - 左操作数
 - `operator: str` - 布尔操作符（`and`, `or`, `xor`, `nand`）
 - `right: ASTNode` - 右操作数
+- `has_explicit_parens: bool` - 是否有显式括号（用于保留用户添加的括号）
+
+**运算符优先级：**
+
+- `and` / `nand`: 优先级 3（最高）
+- `xor`: 优先级 2
+- `or`: 优先级 1（最低）
+
+**解析行为：**
+
+- `A or B and C` 解析为 `A or (B and C)`（根据优先级自动添加括号）
+- `(A or B) and C` 保留显式括号，`has_explicit_parens=True`
+
+**示例：**
+
+```python
+# 简单布尔表达式
+expr = BooleanExpression(
+    SelectorNode("[a]"),
+    "and",
+    SelectorNode("[b]")
+)
+
+# 嵌套表达式（优先级）
+# A or B and C
+expr = BooleanExpression(
+    SelectorNode("[a]"),
+    "or",
+    BooleanExpression(
+        SelectorNode("[b]"),
+        "and",
+        SelectorNode("[c]")
+    )
+)
+```
 
 ---
 
@@ -626,6 +693,21 @@ class SelectorNodeSchema(BaseModel):
     selector_node: str  # 原始选择器字符串（如 [foo][bar]）
     model_config = {"extra": "forbid"}
 ```
+
+#### `MethodCallData` / `MethodCallSchema`
+
+```python
+class MethodCallData(BaseModel):
+    method_name: str  # 方法名称
+    arguments: list[RValueSchema] = []  # 方法参数列表
+    model_config = {"extra": "forbid"}
+
+class MethodCallSchema(BaseModel):
+    method_call: MethodCallData
+    model_config = {"extra": "forbid"}
+```
+
+**注意**: MethodCall 使用嵌套结构，外层是 `method_call` 字段，内层是 `MethodCallData`。
 
 ---
 
@@ -874,8 +956,7 @@ NameSchema: TypeAlias = Annotated[
 
 ```python
 RValueSchema: TypeAlias = Annotated[
-    LSStringSchema | NumberSchema | SelectorNodeSchema | ArraySchema | RegexpSchema,
-    # | MethodCallSchema,  # TODO: Add when MethodCall is implemented
+    LSStringSchema | NumberSchema | SelectorNodeSchema | ArraySchema | MethodCallSchema | RegexpSchema,
     Field(discriminator=None),
 ]
 ```
@@ -931,6 +1012,7 @@ ExpressionSchema: TypeAlias = Annotated[
 **说明**：对应 Logstash 语法规则 `rule expression = ... / rvalue`
 
 **注意**：
+
 - `ExpressionSchema` 是类型别名，不是类。在使用时应该直接使用具体的表达式 Schema 类型。
 - `RValueSchema` 会在 union 中自动展开为 `LSStringSchema | NumberSchema | SelectorNodeSchema | ArraySchema | RegexpSchema`
 
@@ -1027,6 +1109,7 @@ except ParseError as e:
 | Boolean            | BooleanSchema            | `boolean`             |
 | Regexp             | RegexpSchema             | `regexp`              |
 | SelectorNode       | SelectorNodeSchema       | `selector_node`       |
+| MethodCall         | MethodCallSchema         | `method_call`         |
 | Array              | ArraySchema              | `array`               |
 | Hash               | HashSchema               | `hash`                |
 | Attribute          | AttributeSchema          | (RootModel)           |

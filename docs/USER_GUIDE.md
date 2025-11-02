@@ -422,6 +422,29 @@ condition = BooleanExpression(
 )
 ```
 
+**运算符优先级：**
+
+布尔运算符遵循以下优先级（从高到低）：
+
+- `and` / `nand`（优先级 3）
+- `xor`（优先级 2）
+- `or`（优先级 1）
+
+解析器会自动根据优先级添加括号：
+
+```python
+# A or B and C 会被解析为 A or (B and C)
+config = """
+filter {
+    if [a] or [b] and [c] {
+        mutate {}
+    }
+}
+"""
+ast = parse_logstash_config(config)
+# 生成时会保留正确的优先级
+```
+
 ### Q2: 如何处理嵌套的哈希表？
 
 **A:** 递归创建 `Hash` 和 `HashEntryNode`：
@@ -482,6 +505,43 @@ json_str = schema.model_dump_json(
     exclude_none=True,
     by_alias=True
 )
+```
+
+### Q6: 如何使用方法调用（MethodCall）？
+
+**A:** 方法调用可用于条件表达式的右值位置：
+
+```python
+from logstash_parser.ast_nodes import (
+    MethodCall, CompareExpression, SelectorNode, LSString
+)
+
+# 创建方法调用
+method = MethodCall("sprintf", (LSString('"%{pattern}"'),))
+
+# 在条件表达式中使用
+condition = CompareExpression(
+    SelectorNode("[field]"),
+    "==",
+    method
+)
+
+# 嵌套方法调用
+inner = MethodCall("lower", (SelectorNode("[name]"),))
+outer = MethodCall("upper", (inner,))
+```
+
+**解析示例**:
+
+```python
+config = """
+filter {
+    if [field] == sprintf("%{pattern}") {
+        mutate { add_tag => ["matched"] }
+    }
+}
+"""
+ast = parse_logstash_config(config)
 ```
 
 ---
@@ -673,6 +733,48 @@ def validate_config(config_text):
 # 使用
 is_valid, message = validate_config(config_text)
 print(f"{'✅' if is_valid else '❌'} {message}")
+```
+
+### 示例 4: 使用方法调用
+
+```python
+from logstash_parser.ast_nodes import (
+    MethodCall, IfCondition, CompareExpression,
+    SelectorNode, LSString, Plugin, Attribute,
+    LSBareWord, Hash, HashEntryNode
+)
+
+# 创建带方法调用的条件
+method = MethodCall("sprintf", (LSString('"%{expected_status}"'),))
+condition = CompareExpression(
+    SelectorNode("[status]"),
+    "==",
+    method
+)
+
+# 创建插件
+mutate = Plugin("mutate", tuple([
+    Attribute(
+        LSBareWord("add_tag"),
+        Array((LSString('"matched"'),))
+    )
+]))
+
+# 创建条件分支
+if_branch = IfCondition(condition, tuple([mutate]))
+
+# 使用示例
+config = """
+filter {
+    if [status] == sprintf("%{expected_status}") {
+        mutate {
+            add_tag => ["matched"]
+        }
+    }
+}
+"""
+ast = parse_logstash_config(config)
+print(ast.to_logstash())
 ```
 
 ---

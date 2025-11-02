@@ -404,7 +404,7 @@ def build_plugin_node(s, loc, toks: ParseResults) -> Plugin:
 
 ### 节点分类
 
-#### 1. 简单类型（6 个）
+#### 1. 简单类型（7 个）
 
 - `LSString` / `LSStringSchema` - 字符串
 - `LSBareWord` / `LSBareWordSchema` - 裸词
@@ -412,6 +412,7 @@ def build_plugin_node(s, loc, toks: ParseResults) -> Plugin:
 - `Boolean` / `BooleanSchema` - 布尔值
 - `Regexp` / `RegexpSchema` - 正则表达式
 - `SelectorNode` / `SelectorNodeSchema` - 字段选择器
+- `MethodCall` / `MethodCallSchema` - 方法调用
 
 #### 2. 数据结构（4 个）
 
@@ -450,11 +451,11 @@ def build_plugin_node(s, loc, toks: ParseResults) -> Plugin:
 
 - `RValue` - 右值包装器（无 Schema）
 
-**总计**: 25 个 AST 节点类, 23 个 Schema 类（不包括 Data 类和类型别名）
+**总计**: 26 个 AST 节点类, 24 个 Schema 类（不包括 Data 类和类型别名）
 
 **注意**:
 
-- `ExpressionSchema` 是类型别名，不计入 Schema 类数量
+- `ExpressionSchema` 和 `RValueSchema` 是类型别名，不计入 Schema 类数量
 - `HashEntryNode` 和 `RValue` 是内部节点，没有对应的 Schema
 - `AttributeSchema` 使用 `RootModel`，不继承 `ASTNodeSchema`
 

@@ -25,13 +25,27 @@ tests/
 ├── test_schemas.py          # Pydantic Schema 测试
 ├── test_integration.py      # 集成测试
 ├── test_to_source.py        # to_source() 方法测试
-├── test_to_logstash.py      # to_logstash() 方法测试
+├── test_to_logstash.py      # to_logstash() 方法测试（包含回归测试）
 ├── test_from_python.py      # from_python() 方法测试
 ├── test_from_logstash.py    # from_logstash() 方法测试
 ├── test_error_handling.py   # 错误处理测试
 └── test_helpers.py          # 测试辅助工具
 
 总计: 11 个测试文件
+
+**重要测试类**:
+- `TestGrammarRuleFixes` (test_parser.py) - 语法规则修复测试
+- `TestRegressionFixes` (test_to_logstash.py) - 回归测试，包含 9 个子类：
+  - `TestNotInExpressionFix` - NotInExpression 格式修复
+  - `TestBranchIndentationFix` - 条件分支缩进修复
+  - `TestHashNestedFormatFix` - Hash 嵌套格式修复
+  - `TestPluginNestedFormatFix` - Plugin 嵌套格式修复
+  - `TestRegexpDuplicateSlashFix` - Regexp 重复斜杠修复
+  - `TestPluginSectionNewlineFix` - PluginSection 换行修复
+  - `TestBooleanExpressionParenthesesFix` - 布尔表达式括号修复
+  - `TestNegativeExpressionParenthesesFix` - 否定表达式括号修复
+  - `TestOperatorPrecedenceFix` - 运算符优先级修复
+  - `TestRoundtripConsistency` - 往返一致性测试
 ```
 
 ---

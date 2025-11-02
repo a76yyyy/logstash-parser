@@ -1,6 +1,6 @@
 # Logstash Parser
 
-English | [简体中文](README_ZH.md)
+English | [简体中文](docs/zh_cn/README_ZH.md)
 
 A Python-based Logstash pipeline configuration parser powered by [`pyparsing`](https://github.com/pyparsing/pyparsing). This tool parses Logstash config strings into a well-structured Abstract Syntax Tree (AST), making it easier to traverse, manipulate, and convert configurations between Logstash and Python representations.
 
@@ -49,6 +49,7 @@ pip install -e .
 ### Basic Usage
 
 ```python
+from logstash_parser import parse_logstash_config
 
 # Logstash configuration example
 logstash_conf = """
@@ -61,8 +62,8 @@ filter {
 }
 """
 
-# Parse configuration
-ast = Config.from_logstash(logstash_conf)
+# Parse configuration (recommended)
+ast = parse_logstash_config(logstash_conf)
 
 # Convert to Python dictionary
 python_dict = ast.to_python()
@@ -76,7 +77,7 @@ print(logstash_config)
 ### Complete Example
 
 ```python
-from logstash_parser.ast_nodes import Config
+from logstash_parser import parse_logstash_config
 
 # Full configuration with multiple sections
 full_config = """
@@ -107,7 +108,7 @@ output {
 """
 
 # Parse
-ast = Config.from_logstash(full_config)
+ast = parse_logstash_config(full_config)
 
 # Access specific sections
 python_repr = ast.to_python()
@@ -117,7 +118,7 @@ print("Filter plugins:", python_repr.get('filter', []))
 ### Traversing the AST
 
 ```python
-from logstash_parser.ast_nodes import Config
+from logstash_parser import parse_logstash_config
 
 logstash_conf = """
 filter {
@@ -127,7 +128,7 @@ filter {
 }
 """
 
-ast = Config.from_logstash(logstash_conf)
+ast = parse_logstash_config(logstash_conf)
 
 # Traverse all child nodes
 for section in ast.children:
@@ -211,12 +212,39 @@ class ASTNode:
         """Get the original source text of the node (lazy evaluation)"""
 
     @classmethod
+    def from_logstash(cls, config_text: str) -> ASTNode:
+        """Create AST from Logstash configuration string"""
+
+    @classmethod
     def from_python(cls, data: dict | BaseModel) -> ASTNode:
         """Create AST from Python dict or Pydantic Schema"""
 
     def traverse(self):
         """Recursively traverse all child nodes"""
 ```
+
+---
+
+## Documentation
+
+For detailed documentation, please visit:
+
+- **[Documentation Index](docs/README.md)** - Complete documentation overview
+- **[Architecture Design](docs/ARCHITECTURE.md)** - System architecture and design decisions
+- **[API Reference](docs/API_REFERENCE.md)** - Complete API documentation
+- **[User Guide](docs/USER_GUIDE.md)** - Usage examples and best practices
+- **[Testing Guide](docs/TESTING.md)** - Testing framework and best practices
+- **[Changelog](docs/CHANGELOG.md)** - Version history
+
+**中文文档 (Chinese Documentation)**:
+
+- **[中文文档索引](docs/zh_cn/README.md)** - 完整文档概览
+- **[完整项目说明](docs/zh_cn/README_ZH.md)** - 项目介绍、特性、快速开始
+- **[架构设计](docs/zh_cn/ARCHITECTURE.md)** - 系统架构和设计决策
+- **[API 参考](docs/zh_cn/API_REFERENCE.md)** - 完整的 API 文档
+- **[使用指南](docs/zh_cn/USER_GUIDE.md)** - 使用示例和最佳实践
+- **[测试指南](docs/zh_cn/TESTING.md)** - 测试框架和最佳实践
+- **[更新日志](docs/zh_cn/CHANGELOG.md)** - 版本更新记录
 
 ---
 
@@ -242,18 +270,26 @@ logstash-parser/
 │   ├── test_from_logstash.py # from_logstash() tests
 │   └── test_helpers.py   # Test utilities
 ├── docs/                 # Documentation
-│   ├── TESTING.md        # Testing guide
+│   ├── README.md         # Documentation index
+│   ├── ARCHITECTURE.md   # Architecture design
 │   ├── API_REFERENCE.md  # API documentation
 │   ├── USER_GUIDE.md     # User guide
-│   ├── ARCHITECTURE.md   # Architecture design
-│   └── CHANGELOG.md      # Version history
+│   ├── TESTING.md        # Testing guide
+│   ├── CHANGELOG.md      # Version history
+│   └── zh_cn/            # Chinese documentation
+│       ├── README.md     # Chinese documentation index
+│       ├── README_ZH.md  # Complete Chinese project overview
+│       ├── ARCHITECTURE.md
+│       ├── API_REFERENCE.md
+│       ├── USER_GUIDE.md
+│       ├── TESTING.md
+│       └── CHANGELOG.md
 ├── scripts/
 │   └── run_tests.sh      # Test runner script
 ├── pyproject.toml        # Project configuration
 ├── Makefile              # Convenient commands
 ├── LICENSE               # MIT License
-├── README.md             # This file
-└── README_ZH.md          # Chinese documentation
+└── README.md             # This file (English)
 ```
 
 ### Dependencies

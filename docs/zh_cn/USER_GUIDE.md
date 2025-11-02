@@ -1,30 +1,30 @@
-# Logstash Parser User Guide
+# Logstash Parser 使用指南
 
-## 📋 Table of Contents
+## 📋 目录
 
-- [Quick Start](#quick-start)
-- [Basic Usage](#basic-usage)
-- [Advanced Features](#advanced-features)
-- [Best Practices](#best-practices)
-- [Common Questions](#common-questions)
-- [Troubleshooting](#troubleshooting)
+- [快速开始](#快速开始)
+- [基本用法](#基本用法)
+- [高级特性](#高级特性)
+- [最佳实践](#最佳实践)
+- [常见问题](#常见问题)
+- [故障排查](#故障排查)
 
 ---
 
-## Quick Start
+## 快速开始
 
-### Installation
+### 安装
 
 ```bash
 uv add logstash-parser
 ```
 
-### First Example
+### 第一个示例
 
 ```python
 from logstash_parser import parse_logstash_config
 
-# Parse Logstash configuration
+# 解析 Logstash 配置
 config_text = """
 filter {
     grok {
@@ -39,9 +39,9 @@ print(ast.to_logstash())
 
 ---
 
-## Basic Usage
+## 基本用法
 
-### 1. Parse Configuration
+### 1. 解析配置
 
 ```python
 from logstash_parser import parse_logstash_config
@@ -70,14 +70,14 @@ output {
 }
 """
 
-# Parse to AST
+# 解析为 AST
 ast = parse_logstash_config(config_text)
 ```
 
-### 2. Convert to Python Dictionary
+### 2. 转换为 Python 字典
 
 ```python
-# Convert to dict (default behavior)
+# 转换为 dict（默认行为）
 python_dict = ast.to_python()
 
 print(python_dict)
@@ -88,19 +88,19 @@ print(python_dict)
 # }
 ```
 
-### 3. Convert to Pydantic Schema
+### 3. 转换为 Pydantic Schema
 
 ```python
-# Convert to Pydantic Schema
+# 转换为 Pydantic Schema
 schema = ast.to_python(as_pydantic=True)
 
 print(type(schema))  # <class 'ConfigSchema'>
 ```
 
-### 4. Serialize to JSON
+### 4. 序列化为 JSON
 
 ```python
-# Serialize to JSON
+# 序列化为 JSON
 json_str = schema.model_dump_json(indent=2)
 
 print(json_str)
@@ -115,30 +115,30 @@ print(json_str)
 # }
 ```
 
-**Note**: JSON uses snake_case field names with more concise structure.
+**注意**: JSON 使用 snake_case 字段名,结构更简洁。
 
-### 5. Deserialize from JSON
+### 5. 从 JSON 反序列化
 
 ```python
 from logstash_parser.schemas import ConfigSchema
 
-# Deserialize from JSON
+# 从 JSON 反序列化
 loaded_schema = ConfigSchema.model_validate_json(json_str)
 ```
 
-### 6. Convert Back to AST
+### 6. 转换回 AST
 
 ```python
 from logstash_parser.ast_nodes import Config
 
-# Convert from Schema back to AST
+# 从 Schema 转换回 AST
 reconstructed_ast = Config.from_python(loaded_schema)
 ```
 
-### 7. Generate Logstash Configuration
+### 7. 生成 Logstash 配置
 
 ```python
-# Generate Logstash configuration text
+# 生成 Logstash 配置文本
 output_text = reconstructed_ast.to_logstash()
 
 print(output_text)
@@ -146,13 +146,13 @@ print(output_text)
 
 ---
 
-## Advanced Features
+## 高级特性
 
-### 1. Traverse AST
+### 1. 遍历 AST
 
 ```python
 def traverse_ast(node, depth=0):
-    """Recursively traverse AST"""
+    """递归遍历 AST"""
     indent = "  " * depth
     print(f"{indent}{type(node).__name__}")
 
@@ -163,11 +163,11 @@ def traverse_ast(node, depth=0):
 traverse_ast(ast)
 ```
 
-### 2. Find Specific Nodes
+### 2. 查找特定节点
 
 ```python
 def find_plugins(node, plugin_name):
-    """Find plugins with specific name"""
+    """查找特定名称的插件"""
     from logstash_parser.ast_nodes import Plugin
 
     plugins = []
@@ -181,11 +181,11 @@ def find_plugins(node, plugin_name):
 
     return plugins
 
-# Find all grok plugins
+# 查找所有 grok 插件
 grok_plugins = find_plugins(ast, "grok")
 ```
 
-### 3. Modify AST
+### 3. 修改 AST
 
 ```python
 from logstash_parser.ast_nodes import (
@@ -193,7 +193,7 @@ from logstash_parser.ast_nodes import (
     Hash, HashEntryNode, PluginSectionNode
 )
 
-# Create new plugin
+# 创建新插件
 new_plugin = Plugin(
     "mutate",
     tuple([
@@ -209,29 +209,29 @@ new_plugin = Plugin(
     ])
 )
 
-# Add to filter section (children is tuple, need to recreate)
+# 添加到 filter 段（children 是 tuple，需要重新创建）
 new_sections = []
 for section in ast.children:
     if section.plugin_type == "filter":
-        # Create new children tuple with original plugins and new plugin
+        # 创建新的 children tuple，包含原有插件和新插件
         new_children = section.children + (new_plugin,)
         new_section = PluginSectionNode(section.plugin_type, new_children)
         new_sections.append(new_section)
     else:
         new_sections.append(section)
 
-# Create new Config
+# 创建新的 Config
 from logstash_parser.ast_nodes import Config
 updated_ast = Config(tuple(new_sections))
 
-# Generate updated configuration
+# 生成更新后的配置
 updated_config = updated_ast.to_logstash()
 print(updated_config)
 ```
 
-**Note**: Since `children` is immutable `tuple`, cannot modify directly. Need to create new tuple and rebuild nodes.
+**注意**: 由于 `children` 是不可变的 `tuple`，不能直接修改。需要创建新的 tuple 并重新构建节点。
 
-### 4. Conditional Expression Handling
+### 4. 条件表达式处理
 
 ```python
 from logstash_parser.ast_nodes import (
@@ -239,24 +239,24 @@ from logstash_parser.ast_nodes import (
     CompareExpression, SelectorNode, LSString
 )
 
-# Create conditional branch
+# 创建条件分支
 condition = CompareExpression(
     SelectorNode("[type]"),
     "==",
     LSString('"nginx"')
 )
 
-# Use expression directly, no wrapping needed
+# 直接使用表达式，无需包装
 if_branch = IfCondition(
     condition,
-    tuple([grok_plugin])  # children must be tuple
+    tuple([grok_plugin])  # children 必须是 tuple
 )
 
-else_branch = ElseCondition(tuple([mutate_plugin]))  # children must be tuple
+else_branch = ElseCondition(tuple([mutate_plugin]))  # children 必须是 tuple
 
 branch = Branch(if_branch, [], else_branch)
 
-# Add to filter section (need to recreate section)
+# 添加到 filter 段（需要重新创建 section）
 new_sections = []
 for section in ast.children:
     if section.plugin_type == "filter":
@@ -266,42 +266,42 @@ for section in ast.children:
     else:
         new_sections.append(section)
 
-# Create new Config
+# 创建新的 Config
 updated_ast = Config(tuple(new_sections))
 ```
 
-### 5. Validate Configuration
+### 5. 验证配置
 
 ```python
 from pydantic import ValidationError
 
 try:
     schema = ConfigSchema.model_validate(data)
-    print("✅ Configuration valid")
+    print("✅ 配置有效")
 except ValidationError as e:
-    print(f"❌ Configuration invalid:")
+    print(f"❌ 配置无效:")
     for error in e.errors():
         print(f"  - {error['loc']}: {error['msg']}")
 ```
 
-### 6. Partial Serialization
+### 6. 部分序列化
 
 ```python
-# Schema doesn't include source_text, already minimized
+# Schema 不包含 source_text，已经是最小化的
 data = schema.model_dump()
 
-# Exclude None values
+# 排除 None 值
 minimal_data = schema.model_dump(exclude_none=True)
 
-# Serialize only specific fields (based on actual Schema structure)
-# For example, for ConfigSchema:
+# 只序列化特定字段（根据实际 Schema 结构）
+# 例如，对于 ConfigSchema:
 partial_data = schema.model_dump(include={'config'})
 ```
 
-### 7. Generate JSON Schema
+### 7. 生成 JSON Schema
 
 ```python
-# Generate JSON Schema (for documentation or validation)
+# 生成 JSON Schema（用于文档或验证）
 json_schema = ConfigSchema.model_json_schema()
 
 import json
@@ -310,9 +310,9 @@ print(json.dumps(json_schema, indent=2))
 
 ---
 
-## Best Practices
+## 最佳实践
 
-### 1. Error Handling
+### 1. 错误处理
 
 ```python
 from logstash_parser import parse_logstash_config, ParseError
@@ -320,96 +320,96 @@ from logstash_parser import parse_logstash_config, ParseError
 try:
     ast = parse_logstash_config(config_text)
 except ParseError as e:
-    print(f"Parse failed: {e}")
-    # Handle error
+    print(f"解析失败: {e}")
+    # 处理错误
 ```
 
-### 2. Type Checking
+### 2. 类型检查
 
 ```python
 from logstash_parser.ast_nodes import Plugin, Branch
 
 for child in section.children:
     if isinstance(child, Plugin):
-        print(f"Plugin: {child.plugin_name}")
+        print(f"插件: {child.plugin_name}")
     elif isinstance(child, Branch):
-        print("Branch")
+        print("分支")
 ```
 
-### 3. Use Schema Validation
+### 3. 使用 Schema 验证
 
 ```python
-# Use Schema validation when receiving external data
+# 在接收外部数据时使用 Schema 验证
 def load_config(json_str: str):
     try:
         schema = ConfigSchema.model_validate_json(json_str)
         return Config.from_python(schema)
     except ValidationError as e:
-        raise ValueError(f"Invalid configuration: {e}")
+        raise ValueError(f"无效的配置: {e}")
 ```
 
-### 4. Preserve Source Text
+### 4. 保留源文本
 
 ```python
-# Preserve source text when parsing
+# 解析时保留源文本
 ast = parse_logstash_config(config_text)
 
-# Get source text
+# 获取源文本
 source = ast.get_source_text()
 if source:
-    print(f"Original text: {source}")
+    print(f"原始文本: {source}")
 ```
 
-### 5. Incremental Configuration Building
+### 5. 增量构建配置
 
 ```python
 from logstash_parser.ast_nodes import Config, PluginSectionNode
 
-# Create sections
+# 创建各个段
 input_section = PluginSectionNode("input", tuple([beats_plugin]))
 filter_section = PluginSectionNode("filter", tuple([grok_plugin]))
 output_section = PluginSectionNode("output", tuple([es_plugin]))
 
-# Create configuration (build once)
+# 创建配置（一次性构建）
 config = Config(tuple([input_section, filter_section, output_section]))
 ```
 
-**Note**: Since `children` is `tuple`, recommend building complete configuration structure at once rather than adding incrementally.
+**注意**: 由于 `children` 是 `tuple`，建议一次性构建完整的配置结构，而不是逐步添加。
 
-### 6. Configuration Merging
+### 6. 配置合并
 
 ```python
 def merge_configs(config1, config2):
-    """Merge two configurations"""
+    """合并两个配置"""
     merged_sections = []
 
-    # Merge each section
+    # 合并各个段
     for section_type in ["input", "filter", "output"]:
         sections1 = [s for s in config1.children if s.plugin_type == section_type]
         sections2 = [s for s in config2.children if s.plugin_type == section_type]
 
         if sections1 or sections2:
-            # Collect all children
+            # 收集所有 children
             all_children = []
             for s in sections1 + sections2:
                 all_children.extend(s.children)
 
-            # Create merged section
+            # 创建合并后的 section
             merged_section = PluginSectionNode(section_type, tuple(all_children))
             merged_sections.append(merged_section)
 
     return Config(tuple(merged_sections))
 ```
 
-**Note**: Since `children` is `tuple`, need to collect all child nodes to list first, then convert to tuple to create new node.
+**注意**: 由于 `children` 是 `tuple`，需要先收集所有子节点到 list，然后转换为 tuple 创建新节点。
 
 ---
 
-## Common Questions
+## 常见问题
 
-### Q1: How to handle complex conditional expressions?
+### Q1: 如何处理复杂的条件表达式？
 
-**A:** Use `BooleanExpression` to combine multiple conditions:
+**A:** 使用 `BooleanExpression` 组合多个条件：
 
 ```python
 from logstash_parser.ast_nodes import BooleanExpression
@@ -422,18 +422,18 @@ condition = BooleanExpression(
 )
 ```
 
-**Operator Precedence:**
+**运算符优先级：**
 
-Boolean operators follow this precedence (high to low):
+布尔运算符遵循以下优先级（从高到低）：
 
-- `and` / `nand` (precedence 3)
-- `xor` (precedence 2)
-- `or` (precedence 1)
+- `and` / `nand`（优先级 3）
+- `xor`（优先级 2）
+- `or`（优先级 1）
 
-Parser automatically adds parentheses based on precedence:
+解析器会自动根据优先级添加括号：
 
 ```python
-# A or B and C will be parsed as A or (B and C)
+# A or B and C 会被解析为 A or (B and C)
 config = """
 filter {
     if [a] or [b] and [c] {
@@ -442,12 +442,12 @@ filter {
 }
 """
 ast = parse_logstash_config(config)
-# Will preserve correct precedence when generating
+# 生成时会保留正确的优先级
 ```
 
-### Q2: How to handle nested hash tables?
+### Q2: 如何处理嵌套的哈希表？
 
-**A:** Recursively create `Hash` and `HashEntryNode`:
+**A:** 递归创建 `Hash` 和 `HashEntryNode`：
 
 ```python
 nested_hash = Hash(tuple([
@@ -463,43 +463,43 @@ nested_hash = Hash(tuple([
 ]))
 ```
 
-### Q3: How to verify generated configuration is correct?
+### Q3: 如何验证生成的配置是否正确？
 
-**A:** Re-parse generated configuration:
+**A:** 重新解析生成的配置：
 
 ```python
-# Generate configuration
+# 生成配置
 output_text = ast.to_logstash()
 
-# Re-parse
+# 重新解析
 reparsed_ast = parse_logstash_config(output_text)
 
-# Compare structure
+# 比较结构
 assert ast.to_python() == reparsed_ast.to_python()
 ```
 
-### Q4: How to handle large configuration files?
+### Q4: 如何处理大型配置文件？
 
-**A:** Use streaming or segmented processing:
+**A:** 使用流式处理或分段处理：
 
 ```python
-# Segmented parsing
+# 分段解析
 sections = config_text.split('\n\n')
 for section in sections:
     if section.strip():
         try:
             ast = parse_logstash_config(section)
-            # Process each section
+            # 处理每个段
         except ParseError:
             continue
 ```
 
-### Q5: How to customize serialization format?
+### Q5: 如何自定义序列化格式？
 
-**A:** Use Pydantic's serialization options:
+**A:** 使用 Pydantic 的序列化选项：
 
 ```python
-# Custom serialization
+# 自定义序列化
 json_str = schema.model_dump_json(
     indent=2,
     exclude_none=True,
@@ -507,31 +507,31 @@ json_str = schema.model_dump_json(
 )
 ```
 
-### Q6: How to use method calls (MethodCall)?
+### Q6: 如何使用方法调用（MethodCall）？
 
-**A:** Method calls can be used in rvalue position of conditional expressions:
+**A:** 方法调用可用于条件表达式的右值位置：
 
 ```python
 from logstash_parser.ast_nodes import (
     MethodCall, CompareExpression, SelectorNode, LSString
 )
 
-# Create method call
+# 创建方法调用
 method = MethodCall("sprintf", (LSString('"%{pattern}"'),))
 
-# Use in conditional expression
+# 在条件表达式中使用
 condition = CompareExpression(
     SelectorNode("[field]"),
     "==",
     method
 )
 
-# Nested method calls
+# 嵌套方法调用
 inner = MethodCall("lower", (SelectorNode("[name]"),))
 outer = MethodCall("upper", (inner,))
 ```
 
-**Parse Example**:
+**解析示例**:
 
 ```python
 config = """
@@ -546,98 +546,98 @@ ast = parse_logstash_config(config)
 
 ---
 
-## Troubleshooting
+## 故障排查
 
-### Issue 1: Parse Failure
+### 问题 1: 解析失败
 
-**Symptom:** `ParseError: Failed to parse configuration`
+**症状：** `ParseError: Failed to parse configuration`
 
-**Solutions:**
+**解决方案：**
 
-1. Check configuration syntax is correct
-2. Ensure quotes match
-3. Check brackets are closed
-4. Verify operators are correct
+1. 检查配置语法是否正确
+2. 确保引号匹配
+3. 检查括号是否闭合
+4. 验证操作符是否正确
 
 ```python
-# Debug parsing
+# 调试解析
 try:
     ast = parse_logstash_config(config_text)
 except ParseError as e:
-    print(f"Parse error: {e}")
-    # Check line by line
+    print(f"解析错误: {e}")
+    # 逐行检查
     for i, line in enumerate(config_text.split('\n'), 1):
         print(f"{i}: {line}")
 ```
 
-### Issue 2: Serialization Failure
+### 问题 2: 序列化失败
 
-**Symptom:** `ValidationError` or serialization error
+**症状：** `ValidationError` 或序列化错误
 
-**Solutions:**
+**解决方案：**
 
-1. Check data types are correct
-2. Ensure required fields exist
-3. Verify field values are valid
+1. 检查数据类型是否正确
+2. 确保必填字段存在
+3. 验证字段值是否有效
 
 ```python
-# Debug serialization
+# 调试序列化
 try:
     json_str = schema.model_dump_json()
 except Exception as e:
-    print(f"Serialization error: {e}")
-    # Check schema
+    print(f"序列化错误: {e}")
+    # 检查 schema
     print(schema.model_dump())
 ```
 
-### Issue 3: Type Error
+### 问题 3: 类型错误
 
-**Symptom:** `TypeError` or type mismatch
+**症状：** `TypeError` 或类型不匹配
 
-**Solutions:**
+**解决方案：**
 
-1. Use type checking
-2. Verify node types
-3. Use isinstance check
+1. 使用类型检查
+2. 验证节点类型
+3. 使用 isinstance 检查
 
 ```python
-# Type checking
+# 类型检查
 from logstash_parser.ast_nodes import Plugin
 
 if isinstance(node, Plugin):
-    print(f"Plugin name: {node.plugin_name}")
+    print(f"插件名: {node.plugin_name}")
 else:
-    print(f"Not a plugin node: {type(node)}")
+    print(f"不是插件节点: {type(node)}")
 ```
 
-### Issue 4: High Memory Usage
+### 问题 4: 内存占用过高
 
-**Symptom:** High memory usage when processing large configurations
+**症状：** 处理大型配置时内存占用高
 
-**Solutions:**
+**解决方案：**
 
-1. Use streaming processing
-2. Release unneeded objects promptly
-3. Schema doesn't include source_text, already minimized
+1. 使用流式处理
+2. 及时释放不需要的对象
+3. Schema 不包含 source_text，已经是最小化的
 
 ```python
-# Schema already doesn't include source_text
+# Schema 已经不包含 source_text
 schema = ast.to_python(as_pydantic=True)
 json_str = schema.model_dump_json()
 ```
 
-### Issue 5: Performance Issues
+### 问题 5: 性能问题
 
-**Symptom:** Slow parsing or serialization
+**症状：** 解析或序列化速度慢
 
-**Solutions:**
+**解决方案：**
 
-1. Use caching
-2. Batch processing
-3. Avoid repeated parsing
+1. 使用缓存
+2. 批量处理
+3. 避免重复解析
 
 ```python
-# Use caching
+# 使用缓存
 from functools import lru_cache
 
 @lru_cache(maxsize=128)
@@ -647,16 +647,16 @@ def parse_cached(config_text):
 
 ---
 
-## Example Collection
+## 示例集合
 
-### Example 1: Complete Conversion Chain
+### 示例 1: 完整的转换链
 
 ```python
 from logstash_parser import parse_logstash_config
 from logstash_parser.schemas import ConfigSchema
 from logstash_parser.ast_nodes import Config
 
-# 1. Parse
+# 1. 解析
 ast = parse_logstash_config(config_text)
 
 # 2. AST → Schema
@@ -674,15 +674,15 @@ reconstructed_ast = Config.from_python(loaded_schema)
 # 6. AST → Logstash
 output_text = reconstructed_ast.to_logstash()
 
-# Verify
+# 验证
 assert ast.to_python() == reconstructed_ast.to_python()
 ```
 
-### Example 2: Configuration Template
+### 示例 2: 配置模板
 
 ```python
 def create_grok_filter(pattern):
-    """Create grok filter template"""
+    """创建 grok filter 模板"""
     return Plugin(
         "grok",
         tuple([
@@ -698,44 +698,44 @@ def create_grok_filter(pattern):
         ])
     )
 
-# Use template
+# 使用模板
 nginx_filter = create_grok_filter("%{COMBINEDAPACHELOG}")
 syslog_filter = create_grok_filter("%{SYSLOGLINE}")
 ```
 
-### Example 3: Configuration Validator
+### 示例 3: 配置验证器
 
 ```python
 def validate_config(config_text):
-    """Validate Logstash configuration"""
+    """验证 Logstash 配置"""
     try:
-        # Parse
+        # 解析
         ast = parse_logstash_config(config_text)
 
-        # Convert to Schema (triggers validation)
+        # 转换为 Schema（触发验证）
         schema = ast.to_python(as_pydantic=True)
 
-        # Check required sections (from ConfigSchema)
+        # 检查必要的段（从 ConfigSchema 获取）
         plugin_types = set()
         for section_schema in schema.config:
-            # PluginSectionSchema's plugin_section is dict
+            # PluginSectionSchema 的 plugin_section 是 dict
             plugin_types.update(section_schema.plugin_section.keys())
 
         if 'input' not in plugin_types:
-            return False, "Missing input section"
+            return False, "缺少 input 段"
         if 'output' not in plugin_types:
-            return False, "Missing output section"
+            return False, "缺少 output 段"
 
-        return True, "Configuration valid"
+        return True, "配置有效"
     except Exception as e:
         return False, str(e)
 
-# Use
+# 使用
 is_valid, message = validate_config(config_text)
 print(f"{'✅' if is_valid else '❌'} {message}")
 ```
 
-### Example 4: Using Method Calls
+### 示例 4: 使用方法调用
 
 ```python
 from logstash_parser.ast_nodes import (
@@ -744,7 +744,7 @@ from logstash_parser.ast_nodes import (
     LSBareWord, Hash, HashEntryNode
 )
 
-# Create condition with method call
+# 创建带方法调用的条件
 method = MethodCall("sprintf", (LSString('"%{expected_status}"'),))
 condition = CompareExpression(
     SelectorNode("[status]"),
@@ -752,7 +752,7 @@ condition = CompareExpression(
     method
 )
 
-# Create plugin
+# 创建插件
 mutate = Plugin("mutate", tuple([
     Attribute(
         LSBareWord("add_tag"),
@@ -760,10 +760,10 @@ mutate = Plugin("mutate", tuple([
     )
 ]))
 
-# Create conditional branch
+# 创建条件分支
 if_branch = IfCondition(condition, tuple([mutate]))
 
-# Usage example
+# 使用示例
 config = """
 filter {
     if [status] == sprintf("%{expected_status}") {
@@ -779,13 +779,13 @@ print(ast.to_logstash())
 
 ---
 
-## Related Documentation
+## 相关文档
 
-- [Architecture Design](./ARCHITECTURE.md)
-- [API Reference](./API_REFERENCE.md)
-- [Testing Guide](./TESTING.md)
-- [Changelog](./CHANGELOG.md)
+- [架构设计](./ARCHITECTURE.md)
+- [API 参考](./API_REFERENCE.md)
+- [测试指南](./TESTING.md)
+- [更新日志](./CHANGELOG.md)
 
-**中文文档 (Chinese)**:
+**English Documentation**:
 
-- [使用指南 (中文)](./zh_cn/USER_GUIDE.md)
+- [User Guide (English)](../USER_GUIDE.md)

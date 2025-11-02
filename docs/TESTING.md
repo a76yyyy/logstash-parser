@@ -1,175 +1,175 @@
-# Logstash Parser 测试指南
+# Logstash Parser Testing Guide
 
-## 📋 目录
+## 📋 Table of Contents
 
-- [测试结构](#测试结构)
-- [运行测试](#运行测试)
-- [测试覆盖](#测试覆盖)
-- [测试类型](#测试类型)
-- [编写测试](#编写测试)
-- [测试最佳实践](#测试最佳实践)
-- [持续集成](#持续集成)
-- [故障排查](#故障排查)
+- [Test Structure](#test-structure)
+- [Running Tests](#running-tests)
+- [Test Coverage](#test-coverage)
+- [Test Types](#test-types)
+- [Writing Tests](#writing-tests)
+- [Testing Best Practices](#testing-best-practices)
+- [Continuous Integration](#continuous-integration)
+- [Troubleshooting](#troubleshooting)
 
 ---
 
-## 测试结构
+## Test Structure
 
 ```Tree
 tests/
-├── __init__.py              # 测试包初始化
-├── conftest.py              # Pytest fixtures 和配置
-├── test_parser.py           # 解析器测试（包含 TestGrammarRuleFixes）
-├── test_ast_nodes.py        # AST 节点测试
-├── test_conversions.py      # 转换方法测试
-├── test_schemas.py          # Pydantic Schema 测试
-├── test_integration.py      # 集成测试
-├── test_to_source.py        # to_source() 方法测试
-├── test_to_logstash.py      # to_logstash() 方法测试（包含回归测试）
-├── test_from_python.py      # from_python() 方法测试
-├── test_from_logstash.py    # from_logstash() 方法测试
-├── test_error_handling.py   # 错误处理测试
-└── test_helpers.py          # 测试辅助工具
+├── __init__.py              # Test package initialization
+├── conftest.py              # Pytest fixtures and configuration
+├── test_parser.py           # Parser tests (includes TestGrammarRuleFixes)
+├── test_ast_nodes.py        # AST node tests
+├── test_conversions.py      # Conversion method tests
+├── test_schemas.py          # Pydantic Schema tests
+├── test_integration.py      # Integration tests
+├── test_to_source.py        # to_source() method tests
+├── test_to_logstash.py      # to_logstash() method tests (includes regression tests)
+├── test_from_python.py      # from_python() method tests
+├── test_from_logstash.py    # from_logstash() method tests
+├── test_error_handling.py   # Error handling tests
+└── test_helpers.py          # Test helper utilities
 
-总计: 11 个测试文件
+Total: 11 test files
 
-**重要测试类**:
-- `TestGrammarRuleFixes` (test_parser.py) - 语法规则修复测试
-- `TestRegressionFixes` (test_to_logstash.py) - 回归测试，包含 9 个子类：
-  - `TestNotInExpressionFix` - NotInExpression 格式修复
-  - `TestBranchIndentationFix` - 条件分支缩进修复
-  - `TestHashNestedFormatFix` - Hash 嵌套格式修复
-  - `TestPluginNestedFormatFix` - Plugin 嵌套格式修复
-  - `TestRegexpDuplicateSlashFix` - Regexp 重复斜杠修复
-  - `TestPluginSectionNewlineFix` - PluginSection 换行修复
-  - `TestBooleanExpressionParenthesesFix` - 布尔表达式括号修复
-  - `TestNegativeExpressionParenthesesFix` - 否定表达式括号修复
-  - `TestOperatorPrecedenceFix` - 运算符优先级修复
-  - `TestRoundtripConsistency` - 往返一致性测试
+**Important Test Classes**:
+- `TestGrammarRuleFixes` (test_parser.py) - Grammar rule fix tests
+- `TestRegressionFixes` (test_to_logstash.py) - Regression tests with 9 subclasses:
+  - `TestNotInExpressionFix` - NotInExpression format fix
+  - `TestBranchIndentationFix` - Conditional branch indentation fix
+  - `TestHashNestedFormatFix` - Hash nested format fix
+  - `TestPluginNestedFormatFix` - Plugin nested format fix
+  - `TestRegexpDuplicateSlashFix` - Regexp duplicate slash fix
+  - `TestPluginSectionNewlineFix` - PluginSection newline fix
+  - `TestBooleanExpressionParenthesesFix` - Boolean expression parentheses fix
+  - `TestNegativeExpressionParenthesesFix` - Negative expression parentheses fix
+  - `TestOperatorPrecedenceFix` - Operator precedence fix
+  - `TestRoundtripConsistency` - Roundtrip consistency tests
 ```
 
 ---
 
-## 运行测试
+## Running Tests
 
-### 安装测试依赖
+### Install Test Dependencies
 
 ```bash
-# 使用 UV (推荐)
+# Using UV (recommended)
 uv sync --group test
 
-# 或使用 pip
+# Or using pip
 pip install -e ".[test]"
 ```
 
-### 使用 Makefile
+### Using Makefile
 
 ```bash
-# 查看所有可用命令
+# View all available commands
 make help
 
-# 运行所有测试
+# Run all tests
 make test
 
-# 运行测试（详细输出）
+# Run tests (verbose output)
 make test-v
 
-# 运行测试并生成覆盖率报告
+# Run tests with coverage report
 make test-cov
 
-# 快速测试（无覆盖率）
+# Quick test (no coverage)
 make test-fast
 
-# 并行运行测试
+# Run tests in parallel
 make test-parallel
 ```
 
-### 直接使用 pytest
+### Using pytest Directly
 
 ```bash
-# 基本运行
+# Basic run
 pytest
 
-# 详细输出
+# Verbose output
 pytest -v
 
-# 显示测试覆盖率
+# Show test coverage
 pytest --cov
 
-# 生成 HTML 覆盖率报告
+# Generate HTML coverage report
 pytest --cov --cov-report=html
 ```
 
-### 运行特定测试
+### Run Specific Tests
 
 ```bash
-# 运行单个测试文件
+# Run single test file
 pytest tests/test_parser.py
 
-# 运行单个测试类
+# Run single test class
 pytest tests/test_parser.py::TestBasicParsing
 
-# 运行单个测试方法
+# Run single test method
 pytest tests/test_parser.py::TestBasicParsing::test_parse_simple_filter
 
-# 运行匹配模式的测试
+# Run tests matching pattern
 pytest -k "test_parse"
 ```
 
-### 使用标记运行测试
+### Run Tests with Markers
 
 ```bash
-# 只运行单元测试
+# Run only unit tests
 pytest -m unit
 
-# 只运行集成测试
+# Run only integration tests
 pytest -m integration
 
-# 排除慢速测试
+# Exclude slow tests
 pytest -m "not slow"
 ```
 
-### 并行运行测试
+### Run Tests in Parallel
 
 ```bash
-# 使用多个 CPU 核心
+# Use multiple CPU cores
 pytest -n auto
 
-# 使用指定数量的核心
+# Use specified number of cores
 pytest -n 4
 ```
 
 ---
 
-## 测试覆盖
+## Test Coverage
 
-### 当前覆盖率
+### Current Coverage
 
-运行 `make test-cov` 查看最新的覆盖率报告。
+Run `make test-cov` to view the latest coverage report.
 
-**目标覆盖率**:
+**Coverage Goals**:
 
-- **总体覆盖率**: > 90%
-- **核心模块覆盖率**: > 95%
+- **Overall Coverage**: > 90%
+- **Core Module Coverage**: > 95%
   - `__init__.py`
   - `grammar.py`
   - `schemas.py`
   - `ast_nodes.py`
 
-### 查看覆盖率报告
+### View Coverage Report
 
 ```bash
-# 生成覆盖率报告
+# Generate coverage report
 pytest --cov --cov-report=html
 
-# 在浏览器中打开报告
+# Open report in browser
 open htmlcov/index.html  # macOS
 xdg-open htmlcov/index.html  # Linux
 ```
 
-### 覆盖率配置
+### Coverage Configuration
 
-覆盖率配置在 `pyproject.toml` 中：
+Coverage configuration in `pyproject.toml`:
 
 ```toml
 [tool.coverage.run]
@@ -192,15 +192,15 @@ exclude_lines = [
 
 ---
 
-## 测试类型
+## Test Types
 
-### 1. 单元测试 (`@pytest.mark.unit`)
+### 1. Unit Tests (`@pytest.mark.unit`)
 
-测试单个函数或类的功能。
+Test individual functions or classes.
 
-**文件**: `test_parser.py`, `test_ast_nodes.py`, `test_schemas.py`
+**Files**: `test_parser.py`, `test_ast_nodes.py`, `test_schemas.py`
 
-**示例**:
+**Example**:
 
 ```python
 def test_lsstring_creation():
@@ -210,13 +210,13 @@ def test_lsstring_creation():
     assert node.value == "hello world"
 ```
 
-### 2. 集成测试 (`@pytest.mark.integration`)
+### 2. Integration Tests (`@pytest.mark.integration`)
 
-测试多个组件的集成。
+Test integration of multiple components.
 
-**文件**: `test_integration.py`
+**Files**: `test_integration.py`
 
-**示例**:
+**Example**:
 
 ```python
 @pytest.mark.integration
@@ -228,59 +228,59 @@ def test_full_roundtrip_workflow(full_config):
     assert ast1.to_python() == ast2.to_python()
 ```
 
-### 3. 转换测试
+### 3. Conversion Tests
 
-测试 AST 转换方法。
+Test AST conversion methods.
 
-**文件**: `test_conversions.py`, `test_to_source.py`, `test_to_logstash.py`, `test_from_python.py`
+**Files**: `test_conversions.py`, `test_to_source.py`, `test_to_logstash.py`, `test_from_python.py`
 
-**覆盖**:
+**Coverage**:
 
 - `to_python()` - AST → Python dict
 - `to_python(as_pydantic=True)` - AST → Pydantic Schema
-- `to_logstash()` - AST → Logstash 配置
-- `to_source()` - 获取原始源文本
+- `to_logstash()` - AST → Logstash configuration
+- `to_source()` - Get original source text
 - `from_python()` - Python dict/Schema → AST
 
-### 4. Schema 测试
+### 4. Schema Tests
 
-测试 Pydantic Schema 类。
+Test Pydantic Schema classes.
 
-**文件**: `test_schemas.py`
+**Files**: `test_schemas.py`
 
-**覆盖**:
+**Coverage**:
 
-- Schema 创建和验证
-- Schema 序列化/反序列化
-- Schema 类型检查
-- Schema 字段验证
+- Schema creation and validation
+- Schema serialization/deserialization
+- Schema type checking
+- Schema field validation
 
-### 5. 错误处理测试
+### 5. Error Handling Tests
 
-测试错误处理和边界情况。
+Test error handling and edge cases.
 
-**文件**: `test_error_handling.py`
+**Files**: `test_error_handling.py`
 
-**覆盖**:
+**Coverage**:
 
-- 解析错误
-- 验证错误
-- 边界情况
-- 异常处理
+- Parse errors
+- Validation errors
+- Edge cases
+- Exception handling
 
 ---
 
-## 编写测试
+## Writing Tests
 
-### 测试命名规范
+### Test Naming Conventions
 
-- 测试文件: `test_*.py`
-- 测试类: `Test*`
-- 测试方法: `test_*`
+- Test files: `test_*.py`
+- Test classes: `Test*`
+- Test methods: `test_*`
 
-### 使用 Fixtures
+### Using Fixtures
 
-在 `conftest.py` 中定义的 fixtures:
+Fixtures defined in `conftest.py`:
 
 ```python
 def test_with_fixture(simple_filter_config):
@@ -289,22 +289,22 @@ def test_with_fixture(simple_filter_config):
     assert ast is not None
 ```
 
-### 可用的 Fixtures
+### Available Fixtures
 
-- `simple_filter_config` - 简单 filter 配置
-- `simple_input_config` - 简单 input 配置
-- `simple_output_config` - 简单 output 配置
-- `full_config` - 完整配置 (input + filter + output)
-- `conditional_config` - 条件分支配置
-- `complex_expression_config` - 复杂表达式配置
-- `array_hash_config` - 数组和哈希配置
-- `number_boolean_config` - 数字和布尔值配置
-- `selector_config` - 字段选择器配置
-- `regexp_config` - 正则表达式配置
+- `simple_filter_config` - Simple filter configuration
+- `simple_input_config` - Simple input configuration
+- `simple_output_config` - Simple output configuration
+- `full_config` - Full configuration (input + filter + output)
+- `conditional_config` - Conditional branch configuration
+- `complex_expression_config` - Complex expression configuration
+- `array_hash_config` - Array and hash configuration
+- `number_boolean_config` - Number and boolean configuration
+- `selector_config` - Field selector configuration
+- `regexp_config` - Regular expression configuration
 
-### 测试模板
+### Test Templates
 
-#### 基本测试
+#### Basic Test
 
 ```python
 def test_feature_name():
@@ -326,7 +326,7 @@ def test_feature_name():
     assert "filter" in result
 ```
 
-#### 参数化测试
+#### Parameterized Test
 
 ```python
 @pytest.mark.parametrize("input,expected", [
@@ -339,7 +339,7 @@ def test_string_parsing(input, expected):
     assert node.value == expected
 ```
 
-#### 异常测试
+#### Exception Test
 
 ```python
 def test_invalid_config():
@@ -348,7 +348,7 @@ def test_invalid_config():
         parse_logstash_config("invalid config")
 ```
 
-### 使用测试辅助工具
+### Using Test Helpers
 
 ```python
 from tests.test_helpers import (
@@ -374,11 +374,11 @@ def test_with_helpers():
 
 ---
 
-## 测试最佳实践
+## Testing Best Practices
 
-### 1. 测试独立性
+### 1. Test Independence
 
-每个测试应该独立运行，不依赖其他测试的状态。
+Each test should run independently, not depending on other tests' state.
 
 ```python
 # ✅ Good
@@ -399,12 +399,12 @@ def test_feature_a():
     assert test_something(shared_config)
 
 def test_feature_b():
-    assert test_something_else(shared_config)  # 依赖 test_feature_a
+    assert test_something_else(shared_config)  # Depends on test_feature_a
 ```
 
-### 2. 清晰的测试名称
+### 2. Clear Test Names
 
-测试名称应该清楚地描述测试内容。
+Test names should clearly describe what is being tested.
 
 ```python
 # ✅ Good
@@ -418,24 +418,24 @@ def test_1():
     pass
 ```
 
-### 3. AAA 模式
+### 3. AAA Pattern
 
-使用 Arrange-Act-Assert 模式组织测试。
+Use Arrange-Act-Assert pattern to organize tests.
 
 ```python
 def test_feature():
     """Test description."""
-    # Arrange - 准备测试数据
+    # Arrange - prepare test data
     config = create_config()
 
-    # Act - 执行被测试的操作
+    # Act - execute tested operation
     result = parse_and_process(config)
 
-    # Assert - 验证结果
+    # Assert - verify results
     assert result == expected
 ```
 
-### 4. 使用有意义的断言消息
+### 4. Use Meaningful Assertion Messages
 
 ```python
 # ✅ Good
@@ -445,7 +445,7 @@ assert len(plugins) == 3, f"Expected 3 plugins, got {len(plugins)}"
 assert len(plugins) == 3
 ```
 
-### 5. 测试边界情况
+### 5. Test Edge Cases
 
 ```python
 def test_empty_array():
@@ -467,9 +467,9 @@ def test_large_array():
 
 ---
 
-## 持续集成
+## Continuous Integration
 
-### GitHub Actions 配置示例
+### GitHub Actions Configuration Example
 
 ```yaml
 name: Tests
@@ -501,52 +501,52 @@ jobs:
 
 ---
 
-## 故障排查
+## Troubleshooting
 
-### 测试失败
+### Test Failures
 
-1. **查看详细输出**:
+1. **View detailed output**:
 
    ```bash
    pytest -vv
    ```
 
-2. **查看完整的 traceback**:
+2. **View full traceback**:
 
    ```bash
    pytest --tb=long
    ```
 
-3. **进入调试模式**:
+3. **Enter debug mode**:
 
    ```bash
    pytest --pdb
    ```
 
-### 覆盖率不足
+### Insufficient Coverage
 
-1. **查看未覆盖的行**:
+1. **View uncovered lines**:
 
    ```bash
    pytest --cov --cov-report=term-missing
    ```
 
-2. **生成 HTML 报告**:
+2. **Generate HTML report**:
 
    ```bash
    pytest --cov --cov-report=html
    open htmlcov/index.html
    ```
 
-### 慢速测试
+### Slow Tests
 
-1. **查看最慢的测试**:
+1. **View slowest tests**:
 
    ```bash
    pytest --durations=10
    ```
 
-2. **跳过慢速测试**:
+2. **Skip slow tests**:
 
    ```bash
    pytest -m "not slow"
@@ -554,45 +554,49 @@ jobs:
 
 ---
 
-## 贡献指南
+## Contribution Guidelines
 
-### 添加新测试
+### Adding New Tests
 
-1. 在适当的测试文件中添加测试
-2. 使用清晰的测试名称和文档字符串
-3. 遵循现有的测试模式
-4. 确保测试通过: `pytest`
-5. 检查覆盖率: `pytest --cov`
+1. Add tests in appropriate test file
+2. Use clear test names and docstrings
+3. Follow existing test patterns
+4. Ensure tests pass: `pytest`
+5. Check coverage: `pytest --cov`
 
-### 添加新 Fixture
+### Adding New Fixtures
 
-1. 在 `conftest.py` 中添加 fixture
-2. 添加文档字符串说明用途
-3. 在测试中使用新 fixture
+1. Add fixture in `conftest.py`
+2. Add docstring explaining purpose
+3. Use new fixture in tests
 
-### 报告问题
+### Reporting Issues
 
-如果发现测试问题，请提供:
+If you find test issues, please provide:
 
-- 测试名称
-- 错误消息
-- 重现步骤
-- 预期行为
-
----
-
-## 参考资源
-
-- [Pytest 文档](https://docs.pytest.org/)
-- [Pytest Coverage 插件](https://pytest-cov.readthedocs.io/)
-- [Pydantic 测试](https://docs.pydantic.dev/latest/concepts/testing/)
-- [Python 测试最佳实践](https://docs.python-guide.org/writing/tests/)
+- Test name
+- Error message
+- Reproduction steps
+- Expected behavior
 
 ---
 
-## 相关文档
+## Reference Resources
 
-- [架构设计](./ARCHITECTURE.md)
-- [API 参考](./API_REFERENCE.md)
-- [使用指南](./USER_GUIDE.md)
-- [更新日志](./CHANGELOG.md)
+- [Pytest Documentation](https://docs.pytest.org/)
+- [Pytest Coverage Plugin](https://pytest-cov.readthedocs.io/)
+- [Pydantic Testing](https://docs.pydantic.dev/latest/concepts/testing/)
+- [Python Testing Best Practices](https://docs.python-guide.org/writing/tests/)
+
+---
+
+## Related Documentation
+
+- [Architecture Design](./ARCHITECTURE.md)
+- [API Reference](./API_REFERENCE.md)
+- [User Guide](./USER_GUIDE.md)
+- [Changelog](./CHANGELOG.md)
+
+**中文文档 (Chinese)**:
+
+- [测试指南 (中文)](./zh_cn/TESTING.md)

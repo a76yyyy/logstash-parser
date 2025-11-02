@@ -1,6 +1,6 @@
 # Logstash Parser
 
-[English](README.md) | 简体中文
+[English](../../README.md) | 简体中文 | [文档索引](./README.md)
 
 一个基于 [`pyparsing`](https://github.com/pyparsing/pyparsing) 的 Python Logstash 管道配置解析器。该工具将 Logstash 配置字符串解析为结构清晰的抽象语法树(AST),便于遍历、操作和在 Logstash 与 Python 表示之间进行转换。
 
@@ -8,9 +8,11 @@
 
 ## 特性
 
+- **100% 语法兼容**: 完全符合 Logstash 官方 grammar.treetop 规范
+- **全面测试**: 广泛的测试套件，高代码覆盖率
 - 将 Logstash 管道配置字符串解析为清晰、可遍历的 AST
 - 每个 AST 节点支持:
-  - `.to_python()`: 将子树转换为 Python 原生数据结构
+  - `.to_python()`: 将子树转换为 Python 原生数据结构（dict 或 Pydantic Schema）
   - `.to_logstash()`: 将子树转换回有效的 Logstash 配置字符串
   - `.to_source()`: 获取节点的原始源文本(保留格式)
 - 支持完整的 Logstash 语法:
@@ -18,7 +20,8 @@
   - 条件分支(if/else if/else)
   - 数据类型(字符串、数字、布尔值、数组、哈希表)
   - 字段引用(selector)
-  - 表达式(比较、正则、逻辑运算)
+  - 表达式(比较、正则、逻辑运算、in/not in)
+- Pydantic Schema 支持，提供类型安全的序列化/反序列化
 - 适用于构建需要分析、转换或生成 Logstash 配置的工具
 
 ---
@@ -193,12 +196,11 @@ for section in ast.children:
 ```python
 class ASTNode:
     # 属性
-    children: list[ASTNode]  # 子节点列表
-    parent: ASTNode | None   # 父节点
+    children: tuple[ASTNode, ...]  # 子节点元组（不可变）
 
     # 方法
-    def to_python(self) -> Any:
-        """转换为 Python 原生数据结构"""
+    def to_python(self, as_pydantic: bool = False) -> dict | BaseModel:
+        """转换为 Python 字典或 Pydantic Schema"""
 
     def to_logstash(self, indent: int = 0) -> str:
         """转换为 Logstash 配置字符串"""
@@ -207,7 +209,15 @@ class ASTNode:
         """获取原始源文本(保留格式)"""
 
     def get_source_text(self) -> str | None:
-        """获取节点的原始源文本"""
+        """获取节点的原始源文本（延迟求值）"""
+
+    @classmethod
+    def from_logstash(cls, config_text: str) -> ASTNode:
+        """从 Logstash 配置字符串创建 AST"""
+
+    @classmethod
+    def from_python(cls, data: dict | BaseModel) -> ASTNode:
+        """从 Python 字典或 Pydantic Schema 创建 AST"""
 
     def traverse(self):
         """递归遍历所有子节点"""
@@ -229,11 +239,12 @@ logstash-parser/
 │   └── py.typed          # 类型标注支持
 ├── tests/                # 测试套件（全面覆盖）
 │   ├── conftest.py       # Pytest fixtures
-│   ├── test_parser.py    # 解析器测试
+│   ├── test_parser.py    # 解析器测试（包含 TestGrammarRuleFixes）
 │   ├── test_ast_nodes.py # AST 节点测试
 │   ├── test_conversions.py # 转换测试
 │   ├── test_schemas.py   # Schema 测试
 │   ├── test_integration.py # 集成测试
+│   ├── test_from_logstash.py # from_logstash() 测试
 │   └── test_helpers.py   # 测试工具
 ├── docs/                 # 文档
 │   ├── TESTING.md        # 测试指南
@@ -246,8 +257,8 @@ logstash-parser/
 ├── pyproject.toml        # 项目配置
 ├── Makefile              # 便捷命令
 ├── LICENSE               # MIT 许可证
-├── README.md             # 英文文档
-└── README_ZH.md          # 中文文档(本文件)
+├── README.md             # 英文文档（主文档）
+└── docs/zh_cn/README_ZH.md # 中文文档(本文件)
 ```
 
 ### 依赖

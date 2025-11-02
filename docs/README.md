@@ -1,34 +1,38 @@
-# Logstash Parser 文档
+# Logstash Parser Documentation
 
-## 📚 文档索引
+## 📚 Documentation Index
 
-### 核心文档
+### Project Overview
 
-- **[架构设计](./ARCHITECTURE.md)** - 系统架构和设计决策
-- **[API 参考](./API_REFERENCE.md)** - 完整的 API 文档
-- **[使用指南](./USER_GUIDE.md)** - 使用示例和最佳实践
-- **[测试指南](./TESTING.md)** - 测试框架和最佳实践
+- **[Complete Project Overview](../README.md)** - Project introduction, features, quick start, API reference
 
-### 更新日志
+### Core Documentation
 
-- **[更新日志](./CHANGELOG.md)** - 版本更新记录
+- **[Architecture Design](./ARCHITECTURE.md)** - System architecture and design decisions
+- **[API Reference](./API_REFERENCE.md)** - Complete API documentation
+- **[User Guide](./USER_GUIDE.md)** - Usage examples and best practices
+- **[Testing Guide](./TESTING.md)** - Testing framework and best practices
+
+### Changelog
+
+- **[Changelog](./CHANGELOG.md)** - Version history
 
 ---
 
-## 🚀 快速开始
+## 🚀 Quick Start
 
-### 安装
+### Installation
 
 ```bash
 uv add logstash-parser
 ```
 
-### 基本使用
+### Basic Usage
 
 ```python
 from logstash_parser import parse_logstash_config
 
-# 解析 Logstash 配置
+# Parse Logstash configuration
 config_text = """
 filter {
     grok {
@@ -37,119 +41,123 @@ filter {
 }
 """
 
-# 解析为 AST（推荐使用 parse_logstash_config）
+# Parse to AST (recommended to use parse_logstash_config)
 ast = parse_logstash_config(config_text)
 
-# 转换为 dict
+# Convert to dict
 python_dict = ast.to_python()
 
-# 转换为 Pydantic Schema
+# Convert to Pydantic Schema
 schema = ast.to_python(as_pydantic=True)
 
-# 序列化为 JSON
+# Serialize to JSON
 json_str = schema.model_dump_json(indent=2)
 
-# 生成 Logstash 配置
+# Generate Logstash configuration
 output = ast.to_logstash()
 ```
 
 ---
 
-## 📖 文档说明
+## 📖 Documentation Description
 
-### 架构设计 (ARCHITECTURE.md)
+### Architecture Design (ARCHITECTURE.md)
 
-包含：
+Contains:
 
-- 系统架构概览
-- 核心设计决策
-- AST 与 Schema 的关系
-- 转换流程说明
+- System architecture overview
+- Core design decisions
+- Relationship between AST and Schema
+- Conversion flow explanation
 
-### API 参考 (API_REFERENCE.md)
+### API Reference (API_REFERENCE.md)
 
-包含：
+Contains:
 
-- 所有公开 API
-- AST 节点类型
-- Schema 类型
-- 转换方法
-- 工具函数
+- All public APIs
+- AST node types
+- Schema types
+- Conversion methods
+- Utility functions
 
-### 使用指南 (USER_GUIDE.md)
+### User Guide (USER_GUIDE.md)
 
-包含：
+Contains:
 
-- 基本用法
-- 高级特性
-- 最佳实践
-- 常见问题
-- 故障排查
+- Basic usage
+- Advanced features
+- Best practices
+- Common questions
+- Troubleshooting
 
-### 测试指南 (TESTING.md)
+### Testing Guide (TESTING.md)
 
-包含：
+Contains:
 
-- 测试结构和组织
-- 运行测试的方法
-- 测试覆盖率
-- 编写测试的最佳实践
-- 持续集成配置
+- Test structure and organization
+- Methods to run tests
+- Test coverage
+- Best practices for writing tests
+- Continuous integration configuration
 
-### 更新日志 (CHANGELOG.md)
+### Changelog (CHANGELOG.md)
 
-包含：
+Contains:
 
-- 版本历史
-- 功能变更
-- 破坏性变更
-- 迁移指南
-
----
-
-## 🔗 相关资源
-
-- [Logstash 官方文档](https://www.elastic.co/guide/en/logstash/current/index.html)
-- [Pydantic 文档](https://docs.pydantic.dev/)
-- [项目 GitHub](https://github.com/your-org/logstash-parser)
+- Version history
+- Feature changes
+- Breaking changes
+- Migration guides
 
 ---
 
-## 📝 贡献指南
+## 🔗 Related Resources
 
-欢迎贡献！请查看 [CONTRIBUTING.md](../CONTRIBUTING.md) 了解详情。
+- [Logstash Official Documentation](https://www.elastic.co/guide/en/logstash/current/index.html)
+- [Pydantic Documentation](https://docs.pydantic.dev/)
+- [Project GitHub](https://github.com/your-org/logstash-parser)
+
+**中文文档 (Chinese Documentation)**:
+
+- [中文文档索引](./zh_cn/README.md) - Complete Chinese documentation index
 
 ---
 
-## 🔧 文档维护指南
+## 📝 Contributing
 
-### 维护原则
+Contributions welcome! Please see [CONTRIBUTING.md](../CONTRIBUTING.md) for details.
 
-为保持文档的准确性和时效性，请遵循以下原则：
+---
 
-#### 1. 避免硬编码动态数据
+## 🔧 Documentation Maintenance Guide
 
-**❌ 不推荐**:
+### Maintenance Principles
+
+To maintain documentation accuracy and timeliness, please follow these principles:
+
+#### 1. Avoid Hardcoding Dynamic Data
+
+**❌ Not Recommended**:
 
 ```markdown
-- 测试覆盖率: 90.75%
-- 测试用例数: 425 个
-- 配置文件大小: 200+ 行
+- Test coverage: 90.75%
+- Test cases: 425
+- Config file size: 200+ lines
 ```
 
-**✅ 推荐**:
+**✅ Recommended**:
 
 ```markdown
-- 测试覆盖率: 运行 `make test-cov` 查看最新报告
-- 测试用例: 全面的测试套件
-- 支持复杂配置文件
+- Test coverage: Run `make test-cov` to view latest report
+- Test cases: Comprehensive test suite
+- Supports complex configuration files
 ```
 
-#### 2. 使用推荐的 API
+#### 2. Use Recommended APIs
 
-**示例代码应使用公开的推荐 API**:
+**Example code should use public recommended APIs**:
 
-**✅ 推荐**:
+**✅ Recommended**:
 
 ```python
 from logstash_parser import parse_logstash_config
@@ -157,83 +165,83 @@ from logstash_parser import parse_logstash_config
 ast = parse_logstash_config(config_text)
 ```
 
-**⚠️ 仅在说明底层实现时使用**:
+**⚠️ Only use when explaining low-level implementation**:
 
 ```python
 from logstash_parser.ast_nodes import Config
 
-ast = Config.from_logstash(config_text)  # 底层方法
+ast = Config.from_logstash(config_text)  # Low-level method
 ```
 
-#### 3. 保持数据结构准确性
+#### 3. Maintain Data Structure Accuracy
 
-- 使用正确的类型注解（如 `tuple` 而非 `list`）
-- 及时移除已废弃的特性说明
-- 确保示例代码可以直接运行
+- Use correct type annotations (e.g., `tuple` not `list`)
+- Remove deprecated feature descriptions promptly
+- Ensure example code can run directly
 
-#### 4. 定期检查清单
+#### 4. Regular Checklist
 
-**每次发布前检查**:
+**Before Each Release**:
 
-- [ ] 所有示例代码可以运行
-- [ ] API 文档与实际代码一致
-- [ ] 没有硬编码的版本号或统计数据
-- [ ] 中英文文档内容一致
-- [ ] 链接都有效
+- [ ] All example code can run
+- [ ] API documentation matches actual code
+- [ ] No hardcoded version numbers or statistics
+- [ ] Chinese and English documentation are consistent
+- [ ] All links are valid
 
-**每月检查**:
+**Monthly Check**:
 
-- [ ] 测试指南反映最新的测试结构
-- [ ] 架构文档反映最新的设计决策
-- [ ] 更新日志记录了所有重要变更
+- [ ] Testing guide reflects latest test structure
+- [ ] Architecture documentation reflects latest design decisions
+- [ ] Changelog records all important changes
 
-### 文档更新流程
+### Documentation Update Process
 
-1. **代码变更时**:
+1. **When Code Changes**:
 
-   - 同步更新相关 API 文档
-   - 更新受影响的示例代码
-   - 在 CHANGELOG.md 中记录变更
+   - Update related API documentation synchronously
+   - Update affected example code
+   - Record changes in CHANGELOG.md
 
-2. **添加新特性时**:
+2. **When Adding New Features**:
 
-   - 在 API_REFERENCE.md 中添加 API 说明
-   - 在 USER_GUIDE.md 中添加使用示例
-   - 在 ARCHITECTURE.md 中说明设计决策（如需要）
-   - 更新 CHANGELOG.md
+   - Add API description in API_REFERENCE.md
+   - Add usage examples in USER_GUIDE.md
+   - Explain design decisions in ARCHITECTURE.md (if needed)
+   - Update CHANGELOG.md
 
-3. **修复 Bug 时**:
-   - 更新相关文档中的错误说明
-   - 在 CHANGELOG.md 中记录修复
+3. **When Fixing Bugs**:
+   - Update error descriptions in related documentation
+   - Record fix in CHANGELOG.md
 
-### 常见问题
+### Common Questions
 
-**Q: 如何避免文档过时？**
-
-A:
-
-- 使用动态查看方式（命令、工具）而非硬编码数字
-- 定期运行文档中的示例代码验证
-- 使用自动化工具检查文档链接
-
-**Q: 如何保持中英文文档一致？**
+**Q: How to avoid outdated documentation?**
 
 A:
 
-- 同时更新两个版本
-- 使用相同的代码示例
-- 定期对比检查
+- Use dynamic viewing methods (commands, tools) instead of hardcoded numbers
+- Regularly run example code in documentation for verification
+- Use automated tools to check documentation links
 
-**Q: 何时更新 CHANGELOG？**
+**Q: How to keep Chinese and English documentation consistent?**
 
 A:
 
-- 每次合并 PR 时
-- 发布新版本前整理
-- 记录所有用户可见的变更
+- Update both versions simultaneously
+- Use same code examples
+- Regular comparison checks
+
+**Q: When to update CHANGELOG?**
+
+A:
+
+- When merging each PR
+- Before releasing new version
+- Record all user-visible changes
 
 ---
 
-## 📄 许可证
+## 📄 License
 
-本项目采用 MIT 许可证。详见 [LICENSE](../LICENSE) 文件。
+This project uses MIT License. See [LICENSE](../LICENSE) file for details.

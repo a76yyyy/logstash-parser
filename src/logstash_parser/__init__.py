@@ -118,7 +118,8 @@ class PEG:
 
     negative_expression.set_parse_action(build_negative_expression)
 
-    expression.set_parse_action(build_expression_unwrap)
+    # Don't unwrap expression here - we need to preserve parentheses information
+    # expression.set_parse_action(build_expression_unwrap)
 
     rvalue.set_parse_action(build_rvalue)
 

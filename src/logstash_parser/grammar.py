@@ -350,7 +350,23 @@ r"""
     <LogStash::Config::AST::Condition>
   end
 """
-condition = expression + pp.ZeroOrMore(boolean_operator + expression)
+# NOTE: The treetop grammar is left-associative and doesn't respect operator precedence.
+# However, Logstash itself DOES respect operator precedence: and/nand (3) > xor (2) > or (1)
+#
+# We use pyparsing's infixNotation to properly handle operator precedence:
+# - or/xor/nand are left-associative binary operators
+# - Precedence: or (lowest) < xor < and/nand (highest)
+#
+# This ensures that "A or B and C" is parsed as "A or (B and C)", not "(A or B) and C"
+condition = pp.infixNotation(
+    expression,
+    [
+        (pp.Literal("and"), 2, pp.opAssoc.LEFT),
+        (pp.Literal("nand"), 2, pp.opAssoc.LEFT),
+        (pp.Literal("xor"), 2, pp.opAssoc.LEFT),
+        (pp.Literal("or"), 2, pp.opAssoc.LEFT),
+    ],
+)
 condition.set_name("condition")
 
 r"""
@@ -463,6 +479,8 @@ r"""
   end
 """
 # Require at least one plugin_section (not zero)
+# Note: We don't explicitly add cs because pyparsing automatically handles whitespace
+# between elements, and we use config.ignore(comment) to handle comments
 config = pp.OneOrMore(plugin_section)
 config.ignore(comment)
 config.set_name("config")

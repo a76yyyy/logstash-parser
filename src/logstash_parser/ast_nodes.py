@@ -360,7 +360,7 @@ class ASTNode(Generic[T, S]):
 
         return cast(Self, result[0])
 
-    def to_logstash(self):
+    def to_logstash(self, **kwargs):
         """Convert the AST node to a Logstash representation (to be defined later)."""
         raise NotImplementedError
 
@@ -406,7 +406,7 @@ class LSString(ASTNode[ASTNode, LSStringSchema]):
     def to_source(self):
         return self.lexeme
 
-    def to_logstash(self, indent=0):
+    def to_logstash(self, indent=0, **kwargs):
         # 保留原始引号类型(单引号或双引号)
         return self.lexeme
 
@@ -447,7 +447,7 @@ class LSBareWord(ASTNode[ASTNode, LSBareWordSchema]):
         node = cls(schema.ls_bare_word)
         return node
 
-    def to_logstash(self):
+    def to_logstash(self, **kwargs):
         return self.value
 
     def to_source(self):
@@ -484,8 +484,9 @@ class Regexp(ASTNode[ASTNode, RegexpSchema]):
     def to_source(self):
         return self.lexeme
 
-    def to_logstash(self, indent=0):
-        return f"/{self.lexeme}/"
+    def to_logstash(self, indent=0, **kwargs):
+        # lexeme already includes the slashes (e.g., "/error/")
+        return self.lexeme
 
     def __repr__(self):
         return f"LSString({self.lexeme!r})"
@@ -520,7 +521,7 @@ class Number(ASTNode[ASTNode, NumberSchema]):
         node = cls(schema.number)
         return node
 
-    def to_logstash(self, indent: int = 0) -> int | float:
+    def to_logstash(self, indent: int = 0, **kwargs) -> int | float:
         return self.value
 
     def to_source(self) -> int | float:
@@ -576,17 +577,17 @@ class Array(ASTNode["Plugin | Boolean | LSBareWord | LSString | Number | Array |
             inner_parts.append(str(source) if not isinstance(source, str) else source)
         return "[" + ", ".join(inner_parts) + "]"
 
-    def to_logstash(self, indent: int = 0) -> str:
+    def to_logstash(self, indent: int = 0, **kwargs) -> str:
         ind = " " * indent
         # Reconstruct from children for logstash output
         inner_parts: list[str] = []
         for c in self.children:
             if isinstance(c, Hash):
                 # Hash needs special formatting - strip indent
-                inner_parts.append(c.to_logstash().strip())
+                inner_parts.append(c.to_logstash(**kwargs).strip())
             else:
                 # For other types, use to_logstash
-                child_output = c.to_logstash()
+                child_output = c.to_logstash(**kwargs)
                 inner_parts.append(str(child_output) if not isinstance(child_output, str) else child_output)
         return f"{ind}[" + ", ".join(inner_parts) + "]"
 
@@ -616,16 +617,32 @@ class HashEntryNode(ASTNode[ASTNode, ASTNodeSchema]):
         ind = " " * indent
         return f"{ind}HashEntry(\n{self.key.to_repr(indent + 2)} => {self.value.to_repr()}\n{ind})"
 
-    def to_logstash(self, indent: int = 0) -> str:
+    def to_logstash(self, indent: int = 0, **kwargs) -> str:
         ind = indent * " "
         # Use to_logstash for key
-        key_output = self.key.to_logstash()
+        key_output = self.key.to_logstash(**kwargs)
         out = f"{ind}{key_output if isinstance(key_output, str) else str(key_output)} => "
         if isinstance(self.value, Hash):
-            out += f"\n{self.value.to_logstash(indent + 2)}\n"
+            # Hash should have opening brace on same line
+            hash_str = self.value.to_logstash(indent, **kwargs)
+            # Remove leading indent from first line
+            hash_lines = hash_str.split("\n")
+            out += hash_lines[0].lstrip()
+            if len(hash_lines) > 1:
+                out += "\n" + "\n".join(hash_lines[1:])
+            out += "\n"
+        elif isinstance(self.value, Plugin):
+            # Plugin should have opening brace on same line
+            plugin_str = self.value.to_logstash(indent + 2, **kwargs)
+            # Remove leading indent from first line
+            plugin_lines = plugin_str.split("\n")
+            out += plugin_lines[0].lstrip()
+            if len(plugin_lines) > 1:
+                out += "\n" + "\n".join(plugin_lines[1:])
+            out += "\n"
         else:
             # Use to_logstash for value
-            value_output = self.value.to_logstash()
+            value_output = self.value.to_logstash(**kwargs)
             out += value_output if isinstance(value_output, str) else str(value_output)
             out += "\n"
         return out
@@ -693,12 +710,12 @@ class Hash(ASTNode[HashEntryNode, HashSchema]):
         node = cls(tuple(children))
         return node
 
-    def to_logstash(self, indent: int = 0) -> str:
+    def to_logstash(self, indent: int = 0, **kwargs) -> str:
         ind = " " * indent
         out = f"{ind}{{\n"
         for entry in self.children:
-            out += entry.to_logstash(indent + 2)
-        out += f"{ind}}}\n"
+            out += entry.to_logstash(indent + 2, **kwargs)
+        out += f"{ind}}}"
         return out
 
 
@@ -753,15 +770,31 @@ class Attribute(ASTNode[ASTNode, AttributeSchema]):
         node = cls(name_node, value_node)
         return node
 
-    def to_logstash(self, indent: int = 0) -> str:
+    def to_logstash(self, indent: int = 0, **kwargs) -> str:
         ind = indent * " "
-        name_logstash = self.name.to_logstash() if isinstance(self.name, ASTNode) else self.name
+        name_logstash = self.name.to_logstash(**kwargs) if isinstance(self.name, ASTNode) else self.name
         out = f"{ind}{name_logstash if isinstance(name_logstash, str) else str(name_logstash)} => "
 
         if isinstance(self.value, Hash):
-            out += f"\n{self.value.to_logstash(indent + 2)}\n"
+            # Hash should have opening brace on same line
+            hash_str = self.value.to_logstash(indent, **kwargs)
+            # Remove leading indent from first line
+            hash_lines = hash_str.split("\n")
+            out += hash_lines[0].lstrip()
+            if len(hash_lines) > 1:
+                out += "\n" + "\n".join(hash_lines[1:])
+            out += "\n"
+        elif isinstance(self.value, Plugin):
+            # Plugin should have opening brace on same line
+            plugin_str = self.value.to_logstash(indent + 2, **kwargs)
+            # Remove leading indent from first line
+            plugin_lines = plugin_str.split("\n")
+            out += plugin_lines[0].lstrip()
+            if len(plugin_lines) > 1:
+                out += "\n" + "\n".join(plugin_lines[1:])
+            out += "\n"
         else:
-            value_output = self.value.to_logstash()
+            value_output = self.value.to_logstash(**kwargs)
             out += value_output if isinstance(value_output, str) else str(value_output)
             out += "\n"
         return out
@@ -810,13 +843,13 @@ class Plugin(ASTNode[Attribute, PluginSchema]):
         node = cls(schema.plugin.plugin_name, attributes)
         return node
 
-    def to_logstash(self, indent: int = 0, is_dm_branch: bool = False) -> str:
+    def to_logstash(self, indent: int = 0, is_dm_branch: bool = False, **kwargs) -> str:
         ind = indent * " "
         out = f"{ind}{self.plugin_name} {{\n"
         for child in self.children:
-            out += child.to_logstash(indent + 2)
+            out += child.to_logstash(indent + 2, **kwargs)
 
-        out += f"{ind}}}\n"
+        out += f"{ind}}}"
         return out
 
 
@@ -839,7 +872,7 @@ class Boolean(ASTNode[ASTNode, BooleanSchema]):
         node = cls(schema.boolean)
         return node
 
-    def to_logstash(self, indent: int = 0) -> str:
+    def to_logstash(self, indent: int = 0, **kwargs) -> str:
         return str(self.value).lower()
 
     def to_source(self) -> str:
@@ -882,7 +915,7 @@ class SelectorNode(ASTNode[ASTNode, SelectorNodeSchema]):
         node = cls(schema.selector_node)
         return node
 
-    def to_logstash(self, indent: int = 0) -> str:
+    def to_logstash(self, indent: int = 0, **kwargs) -> str:
         return str(self.raw)
 
     def to_source(self) -> str:
@@ -923,8 +956,8 @@ class RegexExpression(ASTNode[ASTNode, RegexExpressionSchema]):
         node = cls(left, schema.regex_expression.operator, pattern)
         return node
 
-    def to_logstash(self, indent: int = 0) -> str:
-        return f"{self.left.to_logstash()} {self.operator} {self.pattern.to_logstash()}"
+    def to_logstash(self, indent: int = 0, **kwargs) -> str:
+        return f"{self.left.to_logstash(**kwargs)} {self.operator} {self.pattern.to_logstash(**kwargs)}"
 
 
 class CompareExpression(ASTNode[ASTNode, CompareExpressionSchema]):
@@ -962,8 +995,8 @@ class CompareExpression(ASTNode[ASTNode, CompareExpressionSchema]):
         node = cls(left, schema.compare_expression.operator, right)
         return node
 
-    def to_logstash(self, indent=0):
-        return f"{self.left.to_logstash()} {self.operator} {self.right.to_logstash()}"
+    def to_logstash(self, indent=0, **kwargs):
+        return f"{self.left.to_logstash(**kwargs)} {self.operator} {self.right.to_logstash(**kwargs)}"
 
 
 class InExpression(ASTNode[ASTNode, InExpressionSchema]):
@@ -1001,8 +1034,8 @@ class InExpression(ASTNode[ASTNode, InExpressionSchema]):
         node = cls(value, schema.in_expression.operator, collection)
         return node
 
-    def to_logstash(self, indent=0):
-        return f"{self.value.to_logstash()} {self.operator} {self.collection.to_logstash()}"
+    def to_logstash(self, indent=0, **kwargs):
+        return f"{self.value.to_logstash(**kwargs)} {self.operator} {self.collection.to_logstash(**kwargs)}"
 
 
 class NotInExpression(ASTNode[ASTNode, NotInExpressionSchema]):
@@ -1023,8 +1056,8 @@ class NotInExpression(ASTNode[ASTNode, NotInExpressionSchema]):
     def __repr__(self):
         return f"{self.value} {self.operator} {self.collection._to_python_dict()} "
 
-    def to_logstash(self, indent=0):
-        return f"{self.value.to_logstash()} {self.operator} {self.collection.to_logstash()})"
+    def to_logstash(self, indent=0, **kwargs):
+        return f"{self.value.to_logstash(**kwargs)} {self.operator} {self.collection.to_logstash(**kwargs)}"
 
     def _to_pydantic_model(self):
         return NotInExpressionSchema(
@@ -1080,8 +1113,20 @@ class NegativeExpression(ASTNode[ASTNode, NegativeExpressionSchema]):
         node = cls(schema.negative_expression.operator, expression)
         return node
 
-    def to_logstash(self, indent=0):
-        return f"!({self.expression.to_logstash()})"
+    def to_logstash(self, indent=0, **kwargs):
+        # According to grammar: "!" cs "(" cs condition cs ")" / "!" cs selector
+        # Only add parentheses if expression is a condition (BooleanExpression or complex expression)
+        # For simple selectors, no parentheses needed
+        expr_str = self.expression.to_logstash(**kwargs)
+
+        # If expression is a BooleanExpression or contains operators, add parentheses
+        if isinstance(
+            self.expression, (BooleanExpression, CompareExpression, RegexExpression, InExpression, NotInExpression)
+        ):
+            return f"!({expr_str})"
+
+        # For selectors and simple values, no parentheses
+        return f"!{expr_str}"
 
 
 class RValue(
@@ -1114,8 +1159,16 @@ class RValue(
         value = ASTNode.from_schema(schema)
         return cls(value)
 
-    def to_logstash(self, indent=0):
+    def to_logstash(self, indent=0, **kwargs):
         return self.value.to_logstash(indent=indent)
+
+
+PRECEDENCE = {
+    "or": 1,
+    "xor": 2,
+    "and": 3,
+    "nand": 3,
+}
 
 
 class BooleanExpression(ASTNode[ASTNode, BooleanExpressionSchema]):
@@ -1124,20 +1177,55 @@ class BooleanExpression(ASTNode[ASTNode, BooleanExpressionSchema]):
     _parser_element_for_get_source = grammar.condition_with_source
     _parser_element_for_parsing = grammar.condition
 
-    def __init__(self, left, operator, right):
+    def __init__(self, left, operator, right, has_explicit_parens=False):
         super().__init__()
 
         self.left = left
         self.operator = operator
         self.right = right
+        self.has_explicit_parens = has_explicit_parens  # Track if user added parentheses
         self.children = (left, right)
 
         self.set_expression_context(True)  # Mark sub-nodes as expression context
 
-    def to_logstash(self, indent=0):
-        if self.operator == "or":
-            return f"{self.left.to_logstash()} {self.operator} {self.right.to_logstash()}"
-        return f"({self.left.to_logstash()} {self.operator} {self.right.to_logstash()})"
+    def to_logstash(self, indent=0, **kwargs):
+        # Operator precedence: and/nand > xor > or
+        # We need to add parentheses when a lower-precedence operator is used as operand
+        # of a higher-precedence operator
+
+        left_str = self._format_operand(self.left, is_left=True)
+        right_str = self._format_operand(self.right, is_left=False)
+
+        result = f"{left_str} {self.operator} {right_str}"
+
+        # If user explicitly added parentheses, preserve them by default
+        if self.has_explicit_parens:
+            return f"({result})"
+
+        return result
+
+    def _format_operand(self, operand, is_left: bool) -> str:
+        """Format an operand, adding parentheses if needed based on operator precedence."""
+        operand_str = operand.to_logstash() if isinstance(operand, ASTNode) else str(operand)
+
+        # If operand is not a BooleanExpression, no parentheses needed
+        if not isinstance(operand, BooleanExpression):
+            return operand_str
+
+        # If operand has explicit parentheses, they're already added in its to_logstash()
+        if operand.has_explicit_parens:
+            return operand_str
+
+        # Operator precedence levels (higher number = higher precedence)
+
+        parent_prec = PRECEDENCE.get(self.operator, 0)
+        child_prec = PRECEDENCE.get(operand.operator, 0)
+
+        # Add parentheses if child has lower precedence than parent
+        if child_prec < parent_prec:
+            return f"({operand_str})"
+
+        return operand_str
 
     def __repr__(self):
         return f"({self.left} {self.operator} {self.right})"
@@ -1215,13 +1303,17 @@ class IfCondition(ASTNode["Plugin | Branch", IfConditionSchema]):
         node = cls(expr, body)
         return node
 
-    def to_logstash(self, indent=0, is_dm_branch=False):
+    def to_logstash(self, indent=0, is_dm_branch=False, **kwargs):
         if not is_dm_branch:
-            return f"if {self.expr.to_logstash(indent=0)}"
+            return f"if {self.expr.to_logstash(indent=0, **kwargs)}"
         ind = indent * " "
-        out = f"{ind} if {self.expr.to_logstash(indent=0)} {{\n"
+        out = f"{ind}if {self.expr.to_logstash(indent=0, **kwargs)} {{\n"
         for child in self.children:
-            out += child.to_logstash(indent + 2, is_dm_branch=is_dm_branch)
+            child_out = child.to_logstash(indent + 2, is_dm_branch=is_dm_branch, **kwargs)
+            out += child_out
+            # Only add newline if child doesn't already end with one
+            if not child_out.endswith("\n"):
+                out += "\n"
         out += f"{ind}}}\n"
         return out
 
@@ -1276,14 +1368,18 @@ class ElseIfCondition(ASTNode["Plugin | Branch", ElseIfConditionSchema]):
         node = cls(expr, body)
         return node
 
-    def to_logstash(self, indent=0, is_dm_branch=False):
+    def to_logstash(self, indent=0, is_dm_branch=False, **kwargs):
         if not is_dm_branch:
-            return f"else if ({self.expr.to_logstash()} )"
+            return f"else if ({self.expr.to_logstash(**kwargs)} )"
 
         ind = indent * " "
-        out = f"{ind} else if {self.expr.to_logstash()} {{\n"
+        out = f" else if {self.expr.to_logstash(**kwargs)} {{\n"
         for child in self.children:
-            out += child.to_logstash(indent + 2, is_dm_branch=is_dm_branch)
+            child_out = child.to_logstash(indent + 2, is_dm_branch=is_dm_branch, **kwargs)
+            out += child_out
+            # Only add newline if child doesn't already end with one
+            if not child_out.endswith("\n"):
+                out += "\n"
         out += f"{ind}}}\n"
         return out
 
@@ -1332,22 +1428,26 @@ class ElseCondition(ASTNode["Plugin | Branch", ElseConditionSchema]):
         node = cls(body)
         return node
 
-    def to_logstash(self, indent=0, is_dm_branch=False):
+    def to_logstash(self, indent=0, is_dm_branch=False, **kwargs):
         if not is_dm_branch:
             if self.combined_expr and self.expr:
-                out = f"else if {self.expr.to_logstash()} "
+                out = f"else if {self.expr.to_logstash(**kwargs)} "
             else:
                 out = "else"
             return out
 
         ind = " " * indent
         if self.combined_expr and self.expr:
-            out = f"{ind} else if {self.expr.to_logstash()} {{\n"
+            out = f" else if {self.expr.to_logstash(**kwargs)} {{\n"
         else:
-            out = f"{ind} else {{\n"
+            out = " else {\n"
         for child in self.children:
-            out += child.to_logstash(indent + 2, is_dm_branch=is_dm_branch)
-        out += f"{ind} }}\n"
+            child_out = child.to_logstash(indent + 2, is_dm_branch=is_dm_branch, **kwargs)
+            out += child_out
+            # Only add newline if child doesn't already end with one
+            if not child_out.endswith("\n"):
+                out += "\n"
+        out += f"{ind}}}\n"
         return out
 
 
@@ -1405,10 +1505,16 @@ class Branch(ASTNode[IfCondition | ElseIfCondition | ElseCondition, BranchSchema
         node = cls(if_rule, else_if_rules if else_if_rules else None, else_rule)
         return node
 
-    def to_logstash(self, indent=0, is_dm_branch=False) -> str:
+    def to_logstash(self, indent=0, is_dm_branch=False, **kwargs) -> str:
         out = ""
-        for child in self.children:
-            out += child.to_logstash(indent, is_dm_branch=True)
+        for i, child in enumerate(self.children):
+            child_out = child.to_logstash(indent, is_dm_branch=True, **kwargs)
+            if i > 0:
+                # For else if and else, they should be on the same line as the closing brace
+                # Remove the trailing newline from previous output
+                out = out.rstrip("\n")
+                # child_out starts with " else if" or " else", keep the leading space
+            out += child_out
         return out
 
     def to_repr(self, indent: int = 0) -> str:
@@ -1449,11 +1555,18 @@ class PluginSectionNode(ASTNode[Plugin | Branch, PluginSectionSchema]):
         node = cls(plugin_type, children)
         return node
 
-    def to_logstash(self, indent=0, is_dm_branch=False) -> str:
+    def to_logstash(self, indent=0, is_dm_branch=False, **kwargs) -> str:
         ind = " " * indent
         out = f"{ind}{self.plugin_type} {{\n"
-        children = "\n".join(c.to_logstash(indent + 2, is_dm_branch) for c in self.children)
-        out += children
+        for i, child in enumerate(self.children):
+            child_out = child.to_logstash(indent + 2, is_dm_branch, **kwargs)
+            out += child_out
+            # Ensure child ends with newline
+            if not child_out.endswith("\n"):
+                out += "\n"
+            # Add blank line between children (except after the last one)
+            if i < len(self.children) - 1:
+                out += "\n"
         out += f"{ind}}}"
 
         return out
@@ -1492,13 +1605,16 @@ class Config(ASTNode[PluginSectionNode, ConfigSchema]):
         node = cls(children)
         return node
 
-    def to_logstash(self, indent=0, is_dm_branch=False) -> str:
+    def to_logstash(self, indent=0, is_dm_branch=False, **kwargs) -> str:
         """Convert the Config AST back to Logstash configuration format."""
         out = ""
-        for child in self.children:
+        for i, child in enumerate(self.children):
             if isinstance(child, PluginSectionNode):
-                out += child.to_logstash(indent, is_dm_branch)
+                out += child.to_logstash(indent, is_dm_branch, **kwargs)
                 out += "\n"
+                # Add blank line between sections (except after the last one)
+                if i < len(self.children) - 1:
+                    out += "\n"
         return out.rstrip() + "\n"
 
 
@@ -1631,24 +1747,85 @@ def build_expression_unwrap(toks: ParseResults):
     """Unwrap expression Group to get the actual expression node.
     Since expression is defined as a Group in grammar, we need to extract
     the first element which is the actual expression node.
+
+    IMPORTANT: isinstance(toks[0], ParseResults) indicates explicit parentheses!
+    When user writes (expr), it creates an extra ParseResults wrapper.
     """
+    # NOTE: This function is currently not used because we handle unwrapping
+    # in build_condition_node to preserve parentheses information.
     return toks[0][0] if isinstance(toks[0], ParseResults) else toks[0]
 
 
+# Boolean operators set (defined once)
+BOOL_OPS = {"and", "or", "xor", "nand"}
+
+
+def unwrap_and_process(operand_item):
+    """Unwrap operand if wrapped (has parentheses) and process it.
+
+    Returns: (processed_node, had_parens)
+    """
+    # Check if wrapped (has explicit parentheses)
+    if isinstance(operand_item, (list, ParseResults)) and len(operand_item) == 1:
+        # Unwrap and process
+        node = process_infix_result(operand_item[0])
+        # Mark if it's a BooleanExpression
+        if isinstance(node, BooleanExpression):
+            node.has_explicit_parens = True
+        return node
+
+    # Not wrapped, process directly
+    return process_infix_result(operand_item)
+
+
+def process_infix_result(item):
+    """Recursively process infixNotation result."""
+    # Not a list - return as is
+    if not isinstance(item, (list, ParseResults)):
+        return item
+
+    item_len = len(item)
+
+    # Single element list - unwrap it
+    if item_len == 1:
+        return process_infix_result(item[0])
+
+    # Binary expression: [left, op, right]
+    if item_len == 3 and isinstance(item[1], str) and item[1] in BOOL_OPS:
+        left = unwrap_and_process(item[0])
+        operator = item[1]
+        right = unwrap_and_process(item[2])
+        return BooleanExpression(left, operator, right)
+
+    # Flat list (old format): [expr1, 'and', expr2, 'or', expr3, ...]
+    # Check if it contains boolean operators
+    if any(isinstance(x, str) and x in BOOL_OPS for x in item):
+        condition_expr = process_infix_result(item[0])
+        for i in range(1, item_len, 2):
+            boolean_operator = item[i]
+            next_expression = process_infix_result(item[i + 1])
+            condition_expr = BooleanExpression(condition_expr, boolean_operator, next_expression)
+        return condition_expr
+
+    # Fallback: return first item or the item itself
+    return item[0] if item_len == 1 else item
+
+
 def build_condition_node(toks):
-    # t[0] is the first expression
-    condition_expr = toks[0]
+    """Build condition node from infixNotation output.
 
-    # Starting from the second item, alternating between boolean operators and expressions
-    for i in range(1, len(toks), 2):
-        boolean_operator = toks[i]  # the operator (and, or, xor, nand)
-        next_expression = toks[i + 1]  # the next expression
+    infixNotation returns nested lists:
+    - Single expression: ['expr']
+    - Binary expression: [['expr1', 'op', 'expr2']]
+    - Nested: [[['expr1', 'op1', 'expr2'], 'op2', 'expr3']]
 
-        # Create a new compound expression based on the boolean operator and the next expression
-        # BooleanExpression 会在 to_source() 中从子节点重构 source text
-        condition_expr = BooleanExpression(condition_expr, boolean_operator, next_expression)
+    Parentheses detection:
+    - Since we disabled build_expression_unwrap, expressions with parentheses
+      will be wrapped: (expr) becomes [expr] instead of just expr
+    - We detect this by checking if len(item) == 1
+    """
 
-    return condition_expr
+    return process_infix_result(toks[0])
 
 
 def build_if_condition_node(s, loc, toks):

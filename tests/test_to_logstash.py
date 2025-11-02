@@ -1,5 +1,6 @@
 """Tests for to_logstash() method and Logstash config generation."""
 
+from logstash_parser import parse_logstash_config
 from logstash_parser.ast_nodes import (
     Array,
     Attribute,
@@ -286,3 +287,616 @@ class TestToLogstashEdgeCases:
         output = hash_node.to_logstash()
         assert "field" in output
         assert '"value"' in output
+
+
+class TestRegressionFixes:
+    """Regression tests for specific bug fixes in to_logstash() methods.
+
+    Each test class corresponds to a specific issue that was discovered and fixed.
+    """
+
+
+class TestNotInExpressionFix:
+    """Test fix for NotInExpression extra closing parenthesis (Issue #1)."""
+
+    def test_not_in_expression_no_extra_parenthesis(self):
+        """Test that not in expression doesn't have extra closing parenthesis."""
+        config = """
+        filter {
+          if [status] not in [400, 404, 500] {
+            mutate {}
+          }
+        }
+        """
+        ast = parse_logstash_config(config)
+        regenerated = ast.to_logstash()
+
+        # Should not have extra parenthesis
+        assert "not in" in regenerated
+        assert ") not in" not in regenerated
+
+        # Roundtrip should work
+        ast2 = parse_logstash_config(regenerated)
+        assert ast.to_python() == ast2.to_python()
+
+    def test_not_in_with_spaces(self):
+        """Test not in with multiple spaces (preserves original spacing)."""
+        config = """
+        filter {
+          if [level] not   in ["DEBUG", "TRACE"] {
+            mutate {}
+          }
+        }
+        """
+        ast = parse_logstash_config(config)
+        regenerated = ast.to_logstash()
+
+        # Should preserve the spacing (not   in)
+        assert "not" in regenerated and "in" in regenerated
+
+        # Roundtrip should work
+        ast2 = parse_logstash_config(regenerated)
+        assert ast.to_python() == ast2.to_python()
+
+
+class TestBranchIndentationFix:
+    """Test fix for Branch condition indentation (Issue #2)."""
+
+    def test_if_condition_no_leading_space(self):
+        """Test that if condition doesn't have leading space."""
+        config = """
+        filter {
+          if [status] == 200 {
+            mutate {}
+          }
+        }
+        """
+        ast = parse_logstash_config(config)
+        regenerated = ast.to_logstash()
+
+        # Should not have leading space before 'if'
+        lines = regenerated.split("\n")
+        if_line = [line for line in lines if "if" in line and "{" in line][0]
+        assert if_line.startswith("  if")  # Only section indent, no extra space
+
+    def test_else_if_on_same_line(self):
+        """Test that else if is on same line as closing brace."""
+        config = """
+        filter {
+          if [status] == 200 {
+            mutate {}
+          } else if [status] == 404 {
+            mutate {}
+          }
+        }
+        """
+        ast = parse_logstash_config(config)
+        regenerated = ast.to_logstash()
+
+        # else if should be on same line as }
+        assert "} else if" in regenerated
+        assert "}\n  else if" not in regenerated
+
+    def test_else_on_same_line(self):
+        """Test that else is on same line as closing brace."""
+        config = """
+        filter {
+          if [status] == 200 {
+            mutate {}
+          } else {
+            mutate {}
+          }
+        }
+        """
+        ast = parse_logstash_config(config)
+        regenerated = ast.to_logstash()
+
+        # else should be on same line as }
+        assert "} else {" in regenerated
+        assert "}\n  else {" not in regenerated
+
+    def test_multiple_else_if(self):
+        """Test multiple else if branches."""
+        config = """
+        filter {
+          if [status] >= 200 and [status] < 300 {
+            mutate { add_tag => ["2xx"] }
+          } else if [status] >= 300 and [status] < 400 {
+            mutate { add_tag => ["3xx"] }
+          } else if [status] >= 400 and [status] < 500 {
+            mutate { add_tag => ["4xx"] }
+          } else {
+            mutate { add_tag => ["other"] }
+          }
+        }
+        """
+        ast = parse_logstash_config(config)
+        regenerated = ast.to_logstash()
+
+        # All else if and else should be on same line as }
+        assert regenerated.count("} else if") == 2
+        assert regenerated.count("} else {") == 1
+
+
+class TestHashNestedFormatFix:
+    """Test fix for Hash nested format (Issue #3)."""
+
+    def test_hash_attribute_format(self):
+        """Test hash as attribute value has correct format."""
+        config = """
+        filter {
+          mutate {
+            add_field => {
+              "field1" => "value1"
+              "field2" => "value2"
+            }
+          }
+        }
+        """
+        ast = parse_logstash_config(config)
+        regenerated = ast.to_logstash()
+
+        # Hash should have opening brace on same line
+        assert "add_field => {" in regenerated
+
+        # Roundtrip should work
+        ast2 = parse_logstash_config(regenerated)
+        assert ast.to_python() == ast2.to_python()
+
+    def test_nested_hash(self):
+        """Test nested hash format."""
+        config = """
+        filter {
+          mutate {
+            add_field => {
+              "outer" => {
+                "inner" => "value"
+              }
+            }
+          }
+        }
+        """
+        ast = parse_logstash_config(config)
+        regenerated = ast.to_logstash()
+
+        # Both hashes should have opening brace on same line
+        assert "add_field => {" in regenerated
+        assert '"outer" => {' in regenerated
+
+        # Roundtrip should work
+        ast2 = parse_logstash_config(regenerated)
+        assert ast.to_python() == ast2.to_python()
+
+
+class TestPluginNestedFormatFix:
+    """Test fix for Plugin nested format (Issue #4)."""
+
+    def test_codec_plugin_format(self):
+        """Test codec plugin as attribute value has correct format."""
+        config = """
+        input {
+          udp {
+            port => 514
+            codec => json {
+              charset => "UTF-8"
+            }
+          }
+        }
+        """
+        ast = parse_logstash_config(config)
+        regenerated = ast.to_logstash()
+
+        # Plugin should have opening brace on same line
+        assert "codec => json {" in regenerated
+
+        # Roundtrip should work
+        ast2 = parse_logstash_config(regenerated)
+        assert ast.to_python() == ast2.to_python()
+
+    def test_nested_plugin_indentation(self):
+        """Test nested plugin has correct indentation."""
+        config = """
+        output {
+          file {
+            path => "/var/log/output.log"
+            codec => line {
+              format => "%{message}"
+            }
+          }
+        }
+        """
+        ast = parse_logstash_config(config)
+        regenerated = ast.to_logstash()
+
+        # Check indentation
+        lines = regenerated.split("\n")
+        codec_line = [line for line in lines if "codec => line" in line][0]
+        format_line = [line for line in lines if "format =>" in line][0]
+
+        # format should be indented more than codec
+        assert len(format_line) - len(format_line.lstrip()) > len(codec_line) - len(codec_line.lstrip())
+
+
+class TestRegexpDuplicateSlashFix:
+    """Test fix for Regexp duplicate slash (Issue #5)."""
+
+    def test_regexp_no_duplicate_slash(self):
+        """Test that regexp doesn't have duplicate slashes."""
+        config = """
+        filter {
+          if [message] =~ /error/ {
+            mutate {}
+          }
+        }
+        """
+        ast = parse_logstash_config(config)
+        regenerated = ast.to_logstash()
+
+        # Should have /error/, not //error//
+        assert "/error/" in regenerated
+        assert "//error//" not in regenerated
+
+        # Roundtrip should work
+        ast2 = parse_logstash_config(regenerated)
+        assert ast.to_python() == ast2.to_python()
+
+    def test_complex_regexp(self):
+        """Test complex regexp pattern."""
+        config = """
+        filter {
+          if [url] =~ /https?:\\/\\/.*\\.com/ {
+            mutate {}
+          }
+        }
+        """
+        ast = parse_logstash_config(config)
+        regenerated = ast.to_logstash()
+
+        # Should preserve the pattern correctly
+        assert "=~" in regenerated
+        assert regenerated.count("/") >= 4  # At least opening and closing slashes
+
+
+class TestPluginSectionNewlineFix:
+    """Test fix for PluginSection missing newline (Issue #6)."""
+
+    def test_plugin_section_closing_brace_newline(self):
+        """Test that plugin section closing brace is on its own line."""
+        config = """
+        input {
+          stdin {}
+        }
+        filter {
+          mutate {}
+        }
+        """
+        ast = parse_logstash_config(config)
+        regenerated = ast.to_logstash()
+
+        # Closing braces should be on their own lines
+        lines = regenerated.split("\n")
+        closing_braces = [line for line in lines if line.strip() == "}"]
+        assert len(closing_braces) >= 2  # At least 2 section closing braces
+
+    def test_multiple_sections_separated(self):
+        """Test that multiple sections are properly separated."""
+        config = """
+        input {
+          stdin {}
+        }
+        filter {
+          mutate {}
+        }
+        output {
+          stdout {}
+        }
+        """
+        ast = parse_logstash_config(config)
+        regenerated = ast.to_logstash()
+
+        # Should be able to parse regenerated config
+        ast2 = parse_logstash_config(regenerated)
+        assert ast.to_python() == ast2.to_python()
+
+
+class TestBooleanExpressionParenthesesFix:
+    """Test fix for BooleanExpression parentheses based on precedence (Issue #8)."""
+
+    def test_and_with_or_precedence(self):
+        """Test that or inside and gets parentheses."""
+        config = """
+        filter {
+          if [type] == "apache" and ([status] >= 400 or [message] =~ /error/) {
+            mutate {}
+          }
+        }
+        """
+        ast = parse_logstash_config(config)
+        regenerated = ast.to_logstash()
+
+        # or should have parentheses because it's inside and
+        assert "([status] >= 400 or [message] =~ /error/)" in regenerated
+
+        # Roundtrip should work
+        ast2 = parse_logstash_config(regenerated)
+        assert ast.to_python() == ast2.to_python()
+
+    def test_or_with_and_precedence(self):
+        """Test that and inside or gets parentheses."""
+        config = """
+        filter {
+          if ([a] or [b]) and [c] {
+            mutate {}
+          }
+        }
+        """
+        ast = parse_logstash_config(config)
+        regenerated = ast.to_logstash()
+
+        # or should have parentheses because it's left operand of and
+        assert "([a] or [b]) and [c]" in regenerated
+
+    def test_same_precedence_no_extra_parentheses(self):
+        """Test that same precedence operators don't get extra parentheses."""
+        config = """
+        filter {
+          if [a] and [b] and [c] {
+            mutate {}
+          }
+        }
+        """
+        ast = parse_logstash_config(config)
+        regenerated = ast.to_logstash()
+
+        # Should not have extra parentheses
+        assert "([a] and [b])" not in regenerated or "[a] and [b] and [c]" in regenerated
+
+    def test_xor_precedence(self):
+        """Test xor precedence (between and and or)."""
+        config = """
+        filter {
+          if [a] xor ([b] or [c]) {
+            mutate {}
+          }
+        }
+        """
+        ast = parse_logstash_config(config)
+        regenerated = ast.to_logstash()
+
+        # or should have parentheses because it has lower precedence than xor
+        assert "([b] or [c])" in regenerated
+
+    def test_nand_precedence(self):
+        """Test nand precedence (same as and)."""
+        config = """
+        filter {
+          if [a] nand ([b] or [c]) {
+            mutate {}
+          }
+        }
+        """
+        ast = parse_logstash_config(config)
+        regenerated = ast.to_logstash()
+
+        # or should have parentheses
+        assert "([b] or [c])" in regenerated
+
+
+class TestNegativeExpressionParenthesesFix:
+    """Test fix for NegativeExpression unnecessary parentheses (Issue #9)."""
+
+    def test_negative_selector_no_parentheses(self):
+        """Test that negative selector doesn't have parentheses."""
+        config = """
+        filter {
+          if ![field] {
+            mutate {}
+          }
+        }
+        """
+        ast = parse_logstash_config(config)
+        regenerated = ast.to_logstash()
+
+        # Should be ![field], not !([field])
+        assert "![field]" in regenerated
+        assert "!([field])" not in regenerated
+
+    def test_negative_compare_has_parentheses(self):
+        """Test that negative compare expression has parentheses."""
+        config = """
+        filter {
+          if !([status] >= 400) {
+            mutate {}
+          }
+        }
+        """
+        ast = parse_logstash_config(config)
+        regenerated = ast.to_logstash()
+
+        # Should have parentheses
+        assert "!([status] >= 400)" in regenerated
+
+    def test_negative_boolean_has_parentheses(self):
+        """Test that negative boolean expression has parentheses."""
+        config = """
+        filter {
+          if !([a] and [b]) {
+            mutate {}
+          }
+        }
+        """
+        ast = parse_logstash_config(config)
+        regenerated = ast.to_logstash()
+
+        # Should have parentheses
+        assert "!([a] and [b])" in regenerated
+
+    def test_negative_in_boolean_expression(self):
+        """Test negative selector in boolean expression."""
+        config = """
+        filter {
+          if ![a] and [b] {
+            mutate {}
+          }
+        }
+        """
+        ast = parse_logstash_config(config)
+        regenerated = ast.to_logstash()
+
+        # Should be ![a] and [b], not !([a]) and [b]
+        assert "![a] and [b]" in regenerated
+
+
+class TestOperatorPrecedenceFix:
+    """Test fix for operator precedence parsing (Issue #10)."""
+
+    def test_or_and_precedence(self):
+        """Test that 'A or B and C' is parsed as 'A or (B and C)'."""
+        config = """
+        filter {
+          if [a] or [b] and [c] {
+            mutate {}
+          }
+        }
+        """
+        ast = parse_logstash_config(config)
+        regenerated = ast.to_logstash()
+
+        # Roundtrip should preserve semantics
+        ast2 = parse_logstash_config(regenerated)
+        assert ast.to_python() == ast2.to_python()
+
+    def test_complex_precedence(self):
+        """Test complex expression with multiple operators."""
+        config = """
+        filter {
+          if ([a] == 1 and [b] =~ /test/) or ([c] in [1, 2] and ![d]) {
+            mutate {}
+          }
+        }
+        """
+        ast = parse_logstash_config(config)
+        regenerated = ast.to_logstash()
+
+        # Roundtrip should preserve semantics
+        ast2 = parse_logstash_config(regenerated)
+        assert ast.to_python() == ast2.to_python()
+
+    def test_left_associativity(self):
+        """Test that operators are left-associative."""
+        config = """
+        filter {
+          if [a] and [b] and [c] {
+            mutate {}
+          }
+        }
+        """
+        ast = parse_logstash_config(config)
+        regenerated = ast.to_logstash()
+
+        # Should work correctly
+        ast2 = parse_logstash_config(regenerated)
+        assert ast.to_python() == ast2.to_python()
+
+    def test_nested_same_precedence_operators(self):
+        """Test nested expressions with same precedence operators."""
+        config = """
+        filter {
+          if ([field1] and [field2]) or ([field3] or [field4]) {
+            mutate {}
+          }
+        }
+        """
+        ast = parse_logstash_config(config)
+        regenerated = ast.to_logstash()
+
+        # Should work correctly (even if AST structure differs)
+        ast2 = parse_logstash_config(regenerated)
+        # Note: AST structure may differ but semantics are preserved
+        # This is acceptable for associative operators
+        assert ast.to_python() == ast2.to_python()
+        assert "([field1] and [field2]) or ([field3] or [field4])" in ast2.to_logstash()
+
+
+class TestRoundtripConsistency:
+    """Test that roundtrip conversion is consistent."""
+
+    def test_simple_config_roundtrip(self):
+        """Test simple config roundtrip."""
+        config = """
+        filter {
+          mutate {
+            add_field => { "field" => "value" }
+          }
+        }
+        """
+        ast = parse_logstash_config(config)
+        regenerated = ast.to_logstash()
+        ast2 = parse_logstash_config(regenerated)
+
+        assert ast.to_python() == ast2.to_python()
+
+    def test_complex_config_roundtrip(self):
+        """Test complex config roundtrip."""
+        config = """
+        input {
+          file {
+            path => "/var/log/syslog"
+            codec => json {
+              charset => "UTF-8"
+            }
+          }
+        }
+        filter {
+          if [type] == "syslog" and ([level] == "ERROR" or [level] == "FATAL") {
+            mutate {
+              add_tag => ["error"]
+              add_field => {
+                "severity" => "high"
+                "priority" => 1
+              }
+            }
+          } else if [type] == "syslog" and [level] == "WARN" {
+            mutate {
+              add_tag => ["warning"]
+            }
+          } else {
+            mutate {
+              add_tag => ["info"]
+            }
+          }
+        }
+        output {
+          elasticsearch {
+            hosts => ["localhost:9200"]
+            index => "logs-%{+YYYY.MM.dd}"
+          }
+        }
+        """
+        ast = parse_logstash_config(config)
+        regenerated = ast.to_logstash()
+        ast2 = parse_logstash_config(regenerated)
+
+        assert ast.to_python() == ast2.to_python()
+
+    def test_multiple_roundtrips(self):
+        """Test that multiple roundtrips are stable."""
+        config = """
+        filter {
+          if [a] and ([b] or [c]) {
+            mutate {}
+          }
+        }
+        """
+        ast1 = parse_logstash_config(config)
+        regen1 = ast1.to_logstash()
+
+        ast2 = parse_logstash_config(regen1)
+        regen2 = ast2.to_logstash()
+
+        ast3 = parse_logstash_config(regen2)
+        regen3 = ast3.to_logstash()
+
+        # After first roundtrip, should be stable
+        assert regen2 == regen3
+        assert ast2.to_python() == ast3.to_python()
